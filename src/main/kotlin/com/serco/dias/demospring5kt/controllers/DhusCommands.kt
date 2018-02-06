@@ -41,8 +41,8 @@ class DhusCommands {
     }
 
     @ShellMethod("Query Copernicus open hub on ODATA API and download all the results")
-    fun searchOdata(@ShellOption(defaultValue = "fcerreti") username: String,
-                    @ShellOption(defaultValue = "F1ammetta") password: String,
+    fun searchOdata(@ShellOption(defaultValue = "test") username: String,
+                    @ShellOption(defaultValue = "test") password: String,
                     @ShellOption(defaultValue = "substringof('SR_2_LAN', Name)") filter: String,
                     @ShellOption(defaultValue = "IngestionDate desc") orderBy: String
     ) {

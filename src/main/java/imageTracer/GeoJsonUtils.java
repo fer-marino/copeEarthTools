@@ -9,47 +9,49 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class GeoJsonUtils {
+    public interface GeoCoder {
+        float getLat(double x, double y);
+        float getLon(double x, double y);
+    }
 
     private static float round(double val, float places){
         return (float)(Math.round(val*Math.pow(10,places))/Math.pow(10,places));
     }
 
-    private static void geoJsonPolygon(StringBuilder sb, ArrayList<Double[]> segments, String colorstr, HashMap<String,Float> options) {
+    private static void geoJsonPolygon(StringBuilder sb, ArrayList<Double[]> segments, String colorstr, HashMap<String,Float> options, GeoCoder coder) {
         float roundCoords = (float) Math.floor(options.get("roundcoords"));
         // Path
-        sb.append("<path ").append(colorstr).append("d=\"" ).append("M ").append(segments.get(0)[1]).append(" ").append(segments.get(0)[2]).append(" ");
+        sb.append("{\n" +
+                "      \"type\": \"Feature\",\n" +
+                "      "+colorstr+",\n" +
+                "      \"geometry\": {\n" +
+                "        \"type\": \"Polygon\",\n" +
+                "        \"coordinates\": [[");
 
         if( roundCoords == -1 ){
-            for (Double[] segment : segments) {
-                if (segment[0] == 1.0) { // line to
-                    sb.append("L ").append(segment[3] ).append(" ").append(segment[4] ).append(" ");
-                } else { // bezier curve to
-                    sb.append("Q ").append(segment[3] ).append(" ").append(segment[4] ).append(" ").append(segment[5] ).append(" ").append(segment[6] ).append(" ");
-                }
-            }
-        }else{
-            for (Double[] segment : segments) {
-                if (segment[0] == 1.0) {
-                    sb.append("L ").append(round(segment[3], roundCoords)).append(" ")
-                            .append(round(segment[4], roundCoords)).append(" ");
-                } else {
-                    sb.append("Q ").append(round(segment[3], roundCoords)).append(" ")
-                            .append(round(segment[4], roundCoords)).append(" ")
-                            .append(round(segment[5], roundCoords)).append(" ")
-                            .append(round(segment[6], roundCoords)).append(" ");
-                }
-            }
-        }// End of roundcoords check
+            for (Double[] segment : segments)
+                sb.append("[").append(coder.getLon(segment[4], segment[3])).append(", ").append(coder.getLat(segment[4], segment[3])).append("],");
 
-        sb.append("Z\" />");
+            sb.append("[").append(coder.getLon(segments.get(0)[4], segments.get(0)[3])).append(", ").append(coder.getLat(segments.get(0)[4], segments.get(0)[3])).append("]");
+        } else {
+            for (Double[] segment : segments) {
+                sb.append("[").append(round(coder.getLon(segment[4], segment[3]), roundCoords)).append(", ").append(round(coder.getLat(segment[4], segment[3]), roundCoords)).append("],");
+                if (segment[0] == 2) // bezier curve
+                    sb.append("[").append(round(coder.getLon(segment[6], segment[5]), roundCoords)).append(", ").append(round(coder.getLat(segment[6], segment[5]), roundCoords)).append("],");
+            }
+            sb.append("[").append(round(coder.getLon(segments.get(0)[4], segments.get(0)[3]), roundCoords)).append(", ").append(round(coder.getLat(segments.get(0)[4], segments.get(0)[3]), roundCoords)).append("]");
+        }// End of roundcoords check
+        sb.append("\n\t]]");
+
+        sb.append("}\n    }, ");
 
     }
 
     // Converting tracedata to an geojson string, paths are drawn according to a Z-index
-    public static String getGeojson (ImageTracer.IndexedImage ii, HashMap<String,Float> options){
+    public static String getGeojson (ImageTracer.IndexedImage ii, HashMap<String,Float> options, GeoCoder coder){
         // SVG start
         int w = ii.width, h = ii.height;
-        StringBuilder svgstr = new StringBuilder("{ \"type\": \"FeatureCollection\",\n \tfeatures\": [");
+        StringBuilder jsonBuffer = new StringBuilder("{ \"type\": \"FeatureCollection\",\n \t\"features\": [");
 
         // creating Z-index
         TreeMap<Double,Integer[]> zindex = new TreeMap<>();
@@ -75,22 +77,24 @@ public class GeoJsonUtils {
 
         // Drawing
         // Z-index loop
+        zindex.pollFirstEntry();
         for(Map.Entry<Double, Integer[]> entry : zindex.entrySet()) {
-            geoJsonPolygon(svgstr,
+            geoJsonPolygon(jsonBuffer,
                     ii.layers.get(entry.getValue()[0]).get(entry.getValue()[1]),
                     geoJsonColor(ii.palette[entry.getValue()[0]]),
-                    options);
+                    options, coder);
         }
 
+        jsonBuffer.setCharAt(jsonBuffer.length() -2, '\n');
         // SVG End
-        svgstr.append("\t]\n}");
+        jsonBuffer.append("\t]\n}");
 
-        return svgstr.toString();
+        return jsonBuffer.toString();
 
     }// End of getsvgstring()
 
     private static String geoJsonColor(byte[] c){
-        return "\"properties\": { fill: \"rgb("+(c[0]+128)+","+(c[1]+128)+","+(c[2]+128)+")\" stroke: \"rgb("+(c[0]+128)+","+(c[1]+128)+","+(c[2]+128)+")\" stroke-width: \"1\" fill-opacity: \""+((c[3]+128)/255.0)+"\" }";
+        return "\"properties\": { \"fill\": \"rgb("+(c[0]+128)+","+(c[1]+128)+","+(c[2]+128)+")\", \"stroke\": \"rgb("+(c[0]+128)+","+(c[1]+128)+","+(c[2]+128)+")\", \"stroke-width\": \"1\", \"fill-opacity\": \""+((c[3]+128)/255.0)+"\" }";
     }
 
     /**

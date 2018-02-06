@@ -185,10 +185,10 @@ public class ImageTracer{
     }// End of imagedataToSVG()
 
     // Tracing ImageData, then returning the SVG String
-    public static String imagedataToGeoJson (ImageData imgd, HashMap<String,Float> options, byte [][] palette){
+    public static String imagedataToGeoJson (ImageData imgd, HashMap<String,Float> options, byte [][] palette, GeoJsonUtils.GeoCoder coder){
         options = checkoptions(options);
         IndexedImage ii = imagedataToTracedata(imgd,options,palette);
-        return SVGUtils.getsvgstring(ii, options);
+        return GeoJsonUtils.getGeojson(ii, options, coder);
     }// End of imagedataToSVG()
 
 
