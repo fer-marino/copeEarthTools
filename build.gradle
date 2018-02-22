@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        kotlinVersion = '1.2.20'
+        kotlinVersion = '1.2.21'
         springBootVersion = '2.0.0.RC1'
         jacksonVersion = '2.9.2'
         netcdfJavaVersion = '4.6.10'
@@ -45,19 +45,28 @@ repositories {
 
 
 dependencies {
-    compile "edu.ucar:cdm:${netcdfJavaVersion}"
-    compile 'commons-io:commons-io:2.6'
-    compile "com.fasterxml.jackson.module:jackson-module-kotlin:${jacksonVersion}"
+    // spring
     compile "org.springframework:spring-web"
     compile 'org.springframework.shell:spring-shell-starter:2.0.0.RELEASE'
+    runtime 'org.springframework.boot:spring-boot-devtools'
 
+    // kotlin
+    compile "com.fasterxml.jackson.module:jackson-module-kotlin:${jacksonVersion}"
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${kotlinVersion}"
     compile "org.jetbrains.kotlin:kotlin-reflect:${kotlinVersion}"
 
-    runtime 'org.springframework.boot:spring-boot-devtools'
-
+    // GEO
     compile group: 'org.apache.commons', name: 'commons-math3', version: '3.6.1'
+    compile group: 'org.osgeo', name: 'proj4j', version: '0.1.0'
+    compile 'com.esri.geometry:esri-geometry-api:2.0.0'
+    compile "edu.ucar:cdm:${netcdfJavaVersion}"
+//    compile group: 'org.gdal', name: 'gdal', version: '2.2.0'
+    compile files("C:\\Program Files\\GDAL\\java\\gdal.jar")
 
+    // utils
+    compile 'commons-io:commons-io:2.6'
+
+    // test
     testCompile 'org.springframework.boot:spring-boot-starter-test'
     testCompile 'io.projectreactor:reactor-test'
 }
