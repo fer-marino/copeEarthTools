@@ -1,20 +1,53 @@
 package org.esb.tools.controllers
 
 import org.esb.tools.Utils
+import org.gdal.gdal.BuildVRTOptions
+import org.gdal.gdal.Dataset
 import org.gdal.gdal.TranslateOptions
 import org.gdal.gdal.gdal
 import org.gdal.osr.SpatialReference
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
+import org.springframework.shell.standard.ShellOption
+import java.nio.file.Files
+import java.nio.file.Paths
 import java.util.*
 
 @ShellComponent
 class Sentinel1Commands {
 
-    @ShellMethod("Convert OCN files to ASCII Grid")
-    fun ocnToAsciiGrid(prodName: String) {
-        val start = System.currentTimeMillis()
+    @ShellMethod("Convert and merge multiple OCN products")
+    fun ocnMerge(pattern: String, @ShellOption(defaultValue = "-projwin 17 41.5 21.5 39.5") outputOptions:String) {
+        val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
+        if(matches.isEmpty()) {
+            println(" * No product matches the pattern '$pattern'")
+            return
+        }
 
+        val uList = mutableListOf<Dataset>()
+        val vList = mutableListOf<Dataset>()
+        matches.filter { it.isFile }
+                .map { prod -> ocnToAsciiGrid(prod.file.absolutePath, volatile =  true) }
+                .forEach { uList.add(it.first); vList.add(it.second) }
+
+        var t = gdal.BuildVRT("merge", uList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+        gdal.Translate("U10.asc", t, TranslateOptions( gdal.ParseCommandLine("-of AAIGrid -co force_cellsize=true $outputOptions") ) )
+        uList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
+        t.delete()
+
+        t = gdal.BuildVRT("merge", vList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-r cubicspline -resolution average")) )
+        gdal.Translate("V10.asc", t, TranslateOptions( gdal.ParseCommandLine("-of AAIGrid -co force_cellsize=true $outputOptions") ) )
+        vList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
+        t.delete()
+        println(" * done")
+    }
+
+    @ShellMethod("Convert OCN files to ASCII Grid")
+    fun ocnToAsciiGrid(prodName: String,
+                       @ShellOption(defaultValue = "AAIGrid") outputFormat: String = "GTiff",
+                       @ShellOption(defaultValue = "false") volatile: Boolean = false): Pair<Dataset, Dataset> {
+        println(" * Converting $prodName...")
         val wgs84 = SpatialReference()
         wgs84.ImportFromEPSG(4326)
 
@@ -33,41 +66,55 @@ class Sentinel1Commands {
         val directionWarp = gdal.AutoCreateWarpedVRT(direction, wgs84.ExportToWkt())
         val speedWarp = gdal.AutoCreateWarpedVRT(speed, wgs84.ExportToWkt())
 
-        val u = gdal.GetDriverByName("MEM").CreateCopy("U", directionWarp)
-        val v = gdal.GetDriverByName("MEM").CreateCopy("V", directionWarp)
+        val uFilename = if(volatile) Files.createTempFile("U-", ".tif").toString() else "U10"
+        val u = gdal.GetDriverByName("MEM").CreateCopy(uFilename, directionWarp)
+        val vFilename = if(volatile) Files.createTempFile("V-", ".tif").toString() else "V10"
+        val v = gdal.GetDriverByName("MEM").CreateCopy(vFilename, directionWarp)
 
+        val no_data = Array(1, {0.0})
+        speed.GetRasterBand(1).GetNoDataValue(no_data)
         val xSize = directionWarp.rasterXSize
         val ySize = directionWarp.rasterYSize
         val directionArray = FloatArray(xSize * ySize)
         val speedArray = FloatArray(xSize * ySize)
         val uArray = FloatArray(xSize * ySize)
         val vArray = FloatArray(xSize * ySize)
+
         directionWarp.GetRasterBand(1).ReadRaster(0, 0, xSize, ySize, directionArray)
         speedWarp.GetRasterBand(1).ReadRaster(0, 0, xSize, ySize, speedArray)
 
         for(y in 0 until ySize)
             for(x in 0 until xSize) {
-                // TODO handle no_data
                 val i = y * xSize + x
-                val vect = Utils.polarToRectangular(speedArray[i].toDouble(), directionArray[i].toDouble())
-                uArray[i] = vect.first.toFloat()
-                vArray[i] = vect.second.toFloat()
+                if(speedArray[i] == 0f || speedArray[i] == no_data[0].toFloat()) {
+                    uArray[i] = 0f
+                    vArray[i] = 0f
+                } else
+                    Utils.polarToRectangular(speedArray[i].toDouble(), directionArray[i].toDouble()).apply {
+                        uArray[i] = first.toFloat()
+                        vArray[i] = second.toFloat()
+                    }
             }
 
         u.GetRasterBand(1).WriteRaster(0, 0, xSize, ySize, uArray)
         v.GetRasterBand(1).WriteRaster(0, 0, xSize, ySize, vArray)
+        u.GetRasterBand(1).SetNoDataValue(.0)
+        v.GetRasterBand(1).SetNoDataValue(.0)
 
-        gdal.Translate("U10.asc", u, TranslateOptions( gdal.ParseCommandLine("-of AAIGrid -co force_cellsize=true") ) )
-        gdal.Translate("V10.asc", v, TranslateOptions( gdal.ParseCommandLine("-of AAIGrid -co force_cellsize=true") ) )
+        val translateOptions = if(outputFormat.toLowerCase().equals("aaigrid"))
+            TranslateOptions(gdal.ParseCommandLine("-of AAIGrid -co force_cellsize=true"))
+        else
+            TranslateOptions(gdal.ParseCommandLine("-of $outputFormat"))
 
-        u.delete()
-        u.delete()
+        gdal.Translate(uFilename, u, translateOptions)
+        gdal.Translate(vFilename, v, translateOptions)
+
         directionWarp.delete()
         speedWarp.delete()
         direction.delete()
         speed.delete()
 
-        println(" * * completed in ${System.currentTimeMillis() - start} msec")
+        return u to v
     }
 
 }
