@@ -9,7 +9,7 @@ open class Application
 
 fun main(args: Array<String>) {
     gdal.AllRegister()
-    gdal.PushErrorHandler("CPLQuietErrorHandler")
+//    gdal.PushErrorHandler("CPLQuietErrorHandler")
     runApplication<Application>(*args)
 }
 

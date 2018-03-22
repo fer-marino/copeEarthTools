@@ -43,6 +43,35 @@ class Sentinel1Commands {
         println(" * done")
     }
 
+    @ShellMethod("Convert and merge multiple OCN products")
+    fun ocnMergeGeotiff(pattern: String, @ShellOption(defaultValue = "-projwin 17 41.5 21.5 39.5") outputOptions:String) {
+        val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
+        if(matches.isEmpty()) {
+            println(" * No product matches the pattern '$pattern'")
+            return
+        }
+
+        val uList = mutableListOf<Dataset>()
+        val vList = mutableListOf<Dataset>()
+        matches.filter { it.isFile }
+                .map { prod -> ocnToAsciiGrid(prod.file.absolutePath, volatile =  true) }
+                .forEach { uList.add(it.first); vList.add(it.second) }
+
+        val umerge = gdal.BuildVRT("umerge", uList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-r cubicspline -resolution average")) )
+        val vmerge = gdal.BuildVRT("vmerge", vList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-r cubicspline -resolution average")) )
+        val t = gdal.BuildVRT("merge", arrayOf(umerge, vmerge), BuildVRTOptions( gdal.ParseCommandLine("-separate")) )
+
+        gdal.Translate("winds.tif", t, TranslateOptions( gdal.ParseCommandLine("-of gtiff -oo COMPRESS=LZW $outputOptions") ) )
+
+        vList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
+        uList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
+        t.delete()
+        umerge.delete()
+        vmerge.delete()
+
+        println(" * done")
+    }
+
     @ShellMethod("Convert OCN files to ASCII Grid")
     fun ocnToAsciiGrid(prodName: String,
                        @ShellOption(defaultValue = "AAIGrid") outputFormat: String = "GTiff",

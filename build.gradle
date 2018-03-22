@@ -1,8 +1,7 @@
 buildscript {
     ext {
-        kotlinVersion = '1.2.21'
-        springBootVersion = '2.0.0.RC1'
-        jacksonVersion = '2.9.2'
+        kotlinVersion = '1.2.30'
+        springBootVersion = '2.0.0.RELEASE'
         netcdfJavaVersion = '4.6.10'
     }
     repositories {
@@ -10,7 +9,6 @@ buildscript {
         jcenter()
         maven { url "https://repo.spring.io/snapshot" }
         maven { url "https://repo.spring.io/milestone" }
-        maven { url "http://dl.bintray.com/kotlin/kotlin-eap-1.2" }
     }
     dependencies {
         classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
@@ -37,8 +35,6 @@ compileTestKotlin {
 
 repositories {
     mavenCentral()
-    maven { url "https://repo.spring.io/snapshot" }
-    maven { url "https://repo.spring.io/milestone" }
     maven { url 'https://repo.spring.io/libs-milestone' }
     maven { url "https://artifacts.unidata.ucar.edu/content/repositories/unidata-releases/" }
 }
@@ -51,13 +47,11 @@ dependencies {
     runtime 'org.springframework.boot:spring-boot-devtools'
 
     // kotlin
-    compile "com.fasterxml.jackson.module:jackson-module-kotlin:${jacksonVersion}"
+    compile "com.fasterxml.jackson.module:jackson-module-kotlin"
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${kotlinVersion}"
     compile "org.jetbrains.kotlin:kotlin-reflect:${kotlinVersion}"
 
     // GEO
-    compile group: 'org.apache.commons', name: 'commons-math3', version: '3.6.1'
-    compile group: 'org.osgeo', name: 'proj4j', version: '0.1.0'
     compile 'com.esri.geometry:esri-geometry-api:2.0.0'
     compile "edu.ucar:cdm:${netcdfJavaVersion}"
 //    compile group: 'org.gdal', name: 'gdal', version: '2.2.0'
@@ -65,6 +59,7 @@ dependencies {
 
     // utils
     compile 'commons-io:commons-io:2.6'
+    compile group: 'org.apache.commons', name: 'commons-math3', version: '3.6.1'
 
     // test
     testCompile 'org.springframework.boot:spring-boot-starter-test'
