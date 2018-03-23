@@ -2,6 +2,7 @@ package imageTracer;
 
 import org.apache.commons.math3.linear.*;
 
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,31 +20,53 @@ public class GeoJsonUtils {
     }
 
     private static void geoJsonPolygon(StringBuilder sb, ArrayList<Double[]> segments, String colorstr, HashMap<String,Float> options, GeoCoder coder) {
-        float roundCoords = (float) Math.floor(options.get("roundcoords"));
-        // Path
-        sb.append("{\n" +
-                "      \"type\": \"Feature\",\n" +
-                "      "+colorstr+",\n" +
-                "      \"geometry\": {\n" +
-                "        \"type\": \"Polygon\",\n" +
-                "        \"coordinates\": [[");
 
-        if( roundCoords == -1 ){
-            for (Double[] segment : segments)
-                sb.append("[").append(coder.getLon(segment[4], segment[3])).append(", ").append(coder.getLat(segment[4], segment[3])).append("],");
+        if (segments.size() > 3) {
 
-            sb.append("[").append(coder.getLon(segments.get(0)[4], segments.get(0)[3])).append(", ").append(coder.getLat(segments.get(0)[4], segments.get(0)[3])).append("]");
-        } else {
-            for (Double[] segment : segments) {
-                sb.append("[").append(round(coder.getLon(segment[4], segment[3]), roundCoords)).append(", ").append(round(coder.getLat(segment[4], segment[3]), roundCoords)).append("],");
-                if (segment[0] == 2) // bezier curve
-                    sb.append("[").append(round(coder.getLon(segment[6], segment[5]), roundCoords)).append(", ").append(round(coder.getLat(segment[6], segment[5]), roundCoords)).append("],");
+            float roundCoords = (float) Math.floor(options.get("roundcoords"));
+            // Path
+            sb.append("{\n" +
+                    "      \"type\": \"Feature\",\n" +
+                    "      " + colorstr + ",\n" +
+                    "      \"geometry\": {\n" +
+                    "        \"type\": \"Polygon\",\n" +
+                    "        \"coordinates\": [[");
+
+            //        int kk = 0;
+            if (roundCoords == -1) {
+                for (Double[] segment : segments) {
+                    //                kk++;
+                    sb.append("[").append(coder.getLon(segment[4], segment[3])).append(", ").append(coder.getLat(segment[4], segment[3])).append("],");
+
+                    sb.append("[").append(coder.getLon(segments.get(0)[4], segments.get(0)[3])).append(", ").append(coder.getLat(segments.get(0)[4], segments.get(0)[3])).append("]");
+                }
+            } else {
+                //            System.out.println(segments.size());
+                for (Double[] segment : segments) {
+
+                    //                if (segment.length > 3) {
+
+                    if (segment[4] < 0) {
+                        segment[4] = 0.0;
+                    }
+                    if (segment[3] < 0) {
+                        segment[3] = 0.0;
+                    }
+                    sb.append("[").append(round(coder.getLon(segment[4], segment[3]), roundCoords)).append(", ").append(round(coder.getLat(segment[4], segment[3]), roundCoords)).append("],");
+                    if (segment[0] == 2) // bezier curve
+                        sb.append("[").append(round(coder.getLon(segment[6], segment[5]), roundCoords)).append(", ").append(round(coder.getLat(segment[6], segment[5]), roundCoords)).append("],");
+
+                    //                }
+                }
+                //            if (segments.get(0).length > 3) {
+                sb.append("[").append(round(coder.getLon(segments.get(0)[4], segments.get(0)[3]), roundCoords)).append(", ").append(round(coder.getLat(segments.get(0)[4], segments.get(0)[3]), roundCoords)).append("]");
+
+                //            }// End of roundcoords check
             }
-            sb.append("[").append(round(coder.getLon(segments.get(0)[4], segments.get(0)[3]), roundCoords)).append(", ").append(round(coder.getLat(segments.get(0)[4], segments.get(0)[3]), roundCoords)).append("]");
-        }// End of roundcoords check
-        sb.append("\n\t]]");
+            sb.append("\n\t]]");
 
-        sb.append("}\n    }, ");
+            sb.append("}\n    }, ");
+        }
 
     }
 
@@ -78,11 +101,13 @@ public class GeoJsonUtils {
         // Drawing
         // Z-index loop
         zindex.pollFirstEntry();
+//        int k=0;
         for(Map.Entry<Double, Integer[]> entry : zindex.entrySet()) {
             geoJsonPolygon(jsonBuffer,
                     ii.layers.get(entry.getValue()[0]).get(entry.getValue()[1]),
                     geoJsonColor(ii.palette[entry.getValue()[0]]),
                     options, coder);
+//            k++;
         }
 
         jsonBuffer.setCharAt(jsonBuffer.length() -2, '\n');
