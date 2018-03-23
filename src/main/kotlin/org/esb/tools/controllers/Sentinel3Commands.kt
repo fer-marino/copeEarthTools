@@ -1,6 +1,7 @@
 package org.esb.tools.controllers
 
-import org.gdal.gdal.TranslateOptions
+import org.gdal.gdal.InfoOptions
+import org.gdal.gdal.TermProgressCallback
 import org.gdal.gdal.WarpOptions
 import org.gdal.gdal.gdal
 import org.gdal.osr.SpatialReference
@@ -10,6 +11,7 @@ import org.springframework.shell.standard.ShellMethod
 import org.springframework.shell.standard.ShellOption
 import ucar.ma2.ArrayDouble
 import ucar.ma2.ArrayFloat
+import ucar.ma2.ArrayShort
 import ucar.ma2.DataType
 import ucar.nc2.Dimension
 import ucar.nc2.NetcdfFileWriter
@@ -49,11 +51,13 @@ class Sentinel3Commands {
         )
 
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
-        lst.GetRasterBand(1).SetNoDataValue(-1.0)
+//        lst.GetRasterBand(1).SetNoDataValue(0.0)
 
-        val warp = gdal.AutoCreateWarpedVRT(lst, wgs84.ExportToWkt())
-        println(gdal.GDALInfo(warp, null))
-        gdal.Translate("$prodName/lst.tif", warp, TranslateOptions( gdal.ParseCommandLine("-oo GTIFF_HONOUR_NEGATIVE_SCALEY=YES")) )
+        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc")), TermProgressCallback())
+
+//        val warp = gdal.AutoCreateWarpedVRT(lst, wgs84.ExportToWkt())
+//        println(gdal.GDALInfo(warp, null))
+//        gdal.Translate("$prodName/lst.tif", warp, TranslateOptions( gdal.ParseCommandLine("-oo GTIFF_HONOUR_NEGATIVE_SCALEY=YES")) )
 
         lst.delete()
     }
@@ -67,9 +71,17 @@ class Sentinel3Commands {
         val latData = geodeticFile.findVariable("latitude_in").read() as ArrayDouble.D2
         val lonData = geodeticFile.findVariable("longitude_in").read() as ArrayDouble.D2
 
+        val shape = lstData.shape
+
+        // convert float to short
+        val lstDataConv = ArrayShort.D2(shape[0], shape[1])
+
         for(y in 0 until lstData.shape[0])
             for(x in 0 until lstData.shape[1])
-                if(lstData[y, x].isNaN()) lstData[y, x] = -1f
+                if(lstData[y, x].isNaN())
+                    lstDataConv[y, x] = 0
+                else
+                    lstDataConv[y, x] = lstData[y, x].toShort()
 
         val dimensions = lstFile.findVariable("LST").dimensions
 
@@ -81,12 +93,8 @@ class Sentinel3Commands {
         )
 
         // populate
-//        val dimensionsList = listOf(latDimension, lonDimension)
-        val lst = writer.addVariable(null, "surface_temperature", DataType.FLOAT, newDimensions)
+        val lst = writer.addVariable(null, "surface_temperature", DataType.SHORT, newDimensions)
         lst.addAll(lstFile.findVariable("LST").attributes)
-//        lst.addAttribute(Attribute("coordinates", "lon lat"))
-//        lst.addAttribute(Attribute("grid_mapping", "crs"))
-
 
 
         val lat = writer.addVariable(null, "lat", DataType.DOUBLE, newDimensions)
@@ -149,14 +157,19 @@ class Sentinel3Commands {
 
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
 
-        gdal.Warp("$prodName/lst.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc")))
+        val dest = gdal.AutoCreateWarpedVRT(lst, wgs84.ExportToWkt())
+        println(gdal.GDALInfo(dest, null))
+        gdal.Warp(dest, arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc")))
+        gdal.Warp("$prodName/lst_warp.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc")))
+
+        gdal.Translate("$prodName/lst.tif", dest, null)
 
         println(" * Complete")
     }
 
     @ShellMethod("gdal info")
     fun info(prodName: String) {
-        println(gdal.GDALInfo(gdal.Open(prodName), null))
+        println(gdal.GDALInfo(gdal.Open(prodName), InfoOptions(gdal.ParseCommandLine("-hist -stats"))))
     }
 
 }
