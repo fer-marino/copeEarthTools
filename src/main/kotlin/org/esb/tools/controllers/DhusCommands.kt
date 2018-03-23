@@ -1,9 +1,9 @@
-package com.serco.dias.demospring5kt.controllers
+package org.esb.tools.controllers
 
 import com.fasterxml.jackson.annotation.JsonAlias
-import com.serco.dias.demospring5kt.ShellUtils
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.input.CountingInputStream
+import org.esb.tools.Utils
 import org.jline.utils.AttributedString
 import org.jline.utils.AttributedStyle
 import org.springframework.beans.factory.annotation.Autowired
@@ -104,11 +104,11 @@ class DhusCommands {
         var prev: Long = 0
         while (!complete) {
             Thread.sleep(1000)
-            print("\r * Downloading $productName of size ${ShellUtils.readableFileSize(uc.contentLengthLong)}: " +
-                    "${Math.round(stream.byteCount * 1000f / uc.contentLengthLong) / 10f}% (${ShellUtils.readableFileSize(stream.byteCount - prev)}/sec)")
+            print("\r * Downloading $productName of size ${Utils.readableFileSize(uc.contentLengthLong)}: " +
+                    "${Math.round(stream.byteCount * 1000f / uc.contentLengthLong) / 10f}% (${Utils.readableFileSize(stream.byteCount - prev)}/sec)")
             prev = stream.byteCount
         }
-        println("\r * Download of $productName of size ${ShellUtils.readableFileSize(prev)} finished in ${(System.currentTimeMillis() - start)/1000} seconds")
+        println("\r * Download of $productName of size ${Utils.readableFileSize(prev)} finished in ${(System.currentTimeMillis() - start)/1000} seconds")
     }
 
     @ShellMethod("Unzip product")

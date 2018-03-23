@@ -1,4 +1,4 @@
-package com.serco.dias.demospring5kt.controllers
+package org.esb.tools.controllers
 
 import imageTracer.GeoJsonUtils
 import imageTracer.ImageTracer
@@ -10,9 +10,10 @@ import ucar.ma2.ArrayFloat
 import ucar.nc2.dataset.NetcdfDataset
 import java.awt.Color
 import java.awt.image.BufferedImage
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.util.HashMap
+import java.util.*
 import javax.imageio.ImageIO
 
 
@@ -34,7 +35,6 @@ class ECMWFProcessor {
 
         val data = ImageTracer.loadImageData(image)
         val palette = ImageTracer.getPalette(image, options)
-        var vector = ImageTracer.imagedataToTracedata(data, options, palette)
         val svg = ImageTracer.imagedataToSVG(data, options, palette)
         val geo = imagedataToGeoJson(data, options, palette, object: GeoJsonUtils.GeoCoder {
             override fun getLat(x: Double, y: Double): Float {
@@ -54,6 +54,38 @@ class ECMWFProcessor {
 
         dataset.close()
         println(" * Imported products in ${(System.currentTimeMillis() - start)/1000} seconds")
+    }
+
+    @ShellMethod("Convert NetCDF variable to ascii grid format ")
+    fun toAsciiGrid(varName: String, @ShellOption(defaultValue = "XLAT") latVarName: String,
+                    @ShellOption(defaultValue = "XLONG") lonVarName: String,
+                    @ShellOption(defaultValue = "wrfout_d03_2017-07-13_12_00_00") inputFile: String ) {
+        val dataset = NetcdfDataset.openDataset(inputFile)
+        val lat = dataset.findVariable(latVarName).read() as ArrayFloat.D3
+        val lon = dataset.findVariable(lonVarName).read() as ArrayFloat.D3
+        val findVariable = dataset.findVariable(varName)
+        val variable = findVariable.read() as ArrayFloat.D3
+
+        File("$varName.asc").printWriter().use { out ->
+            val shape = findVariable.shape
+            val cellSize = (lon[0, 0, shape[1]-1] - lon[0, 0, 0])/(shape[1]-1)
+            out.write("ncols        ${shape[1]}\n" +
+                    "nrows        ${shape[2]}\n" +
+                    "xllcorner    ${lon[0, 0, 0]}\n" +
+                    "yllcorner    ${lat[0, 0, shape[2]-1]}\n" +
+                    "cellsize     $cellSize\n" +
+                    "NODATA_value ${Double.MAX_VALUE}\n")
+
+            for(i in 0 until shape[1]) {
+                for (j in 0 until shape[2]) {
+                    out.write("${variable[10, i, j]} ")
+                }
+                out.write("\n")
+            }
+        }
+        dataset.close()
+
+        println(" * * completed")
     }
 
     private fun buildImage(aIn: ArrayFloat.D3, scaleFactor: Float = 255f, outputFile: String? = null, nan: Float = 0f): BufferedImage {
@@ -80,7 +112,7 @@ class ECMWFProcessor {
 
     // https://github.com/jankovicsandras/imagetracerjava
     init {
-        options["numberofcolors"] = 128f
+        options["numberofcolors"] = 32f
         options["scale"] = 4f
         options["ltres"] = 1f
         options["qtres"] = 1f

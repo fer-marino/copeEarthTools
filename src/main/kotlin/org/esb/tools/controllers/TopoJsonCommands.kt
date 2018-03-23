@@ -1,4 +1,4 @@
-package com.serco.dias.demospring5kt.controllers
+package org.esb.tools.controllers
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.shell.standard.ShellComponent
