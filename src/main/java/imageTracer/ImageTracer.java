@@ -15,6 +15,7 @@ public class ImageTracer{
 
     public static String versionnumber = "1.1.3";
     private static int[] rawdata;
+//    private static GeoJsonUtils.GeoCoder coder;
 
     public ImageTracer(){}
 
@@ -143,14 +144,18 @@ public class ImageTracer{
     public static byte[][] getPalette(BufferedImage image, HashMap<String,Float> options){
         int numberofcolors = options.get("numberofcolors").intValue();
         int[][] pixels = new int[image.getWidth()][image.getHeight()];
+//        System.out.println(pixels.length);
+//        System.out.println(pixels[0].length);
+//        System.out.println(pixels[1].length);
 
         for(int i = 0; i < image.getWidth(); i++)
             for(int j = 0; j < image.getHeight(); j++){
+//                System.out.println(image.getRGB(i, j));
                 pixels[i][j] = image.getRGB(i, j);
             }
         int[] palette = Quantize.quantizeImage(pixels, numberofcolors);
         byte[][] bytepalette = new byte[numberofcolors][4];
-
+//        System.out.println("palette size "+palette.length);
         for(int i = 0; i < palette.length; i++) {
             Color c = new Color(palette[i]);
             bytepalette[i][0] = (byte) c.getRed();
@@ -191,7 +196,6 @@ public class ImageTracer{
         return GeoJsonUtils.getGeojson(ii, options, coder);
     }// End of imagedataToSVG()
 
-
     // Loading an image from a file, tracing when loaded, then returning IndexedImage with tracedata in layers
     public IndexedImage imageToTracedata (String filename, HashMap<String,Float> options, byte [][] palette) throws Exception{
         options = checkoptions(options);
@@ -216,6 +220,8 @@ public class ImageTracer{
         // 4. Batch interpollation
         ArrayList<ArrayList<ArrayList<Double[]>>> bis = VectorizingUtils.batchinternodes(bps);
         // 5. Batch tracing
+//        System.out.println(bps.size());
+//        System.out.println(bis.size());
         ii.layers = VectorizingUtils.batchtracelayers(bis,options.get("ltres"),options.get("qtres"));
         return ii;
     }// End of imagedataToTracedata()
