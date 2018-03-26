@@ -1,7 +1,7 @@
 package org.esb.tools.controllers
 
 import org.gdal.gdal.InfoOptions
-import org.gdal.gdal.TermProgressCallback
+import org.gdal.gdal.ProgressCallback
 import org.gdal.gdal.WarpOptions
 import org.gdal.gdal.gdal
 import org.gdal.osr.SpatialReference
@@ -32,13 +32,76 @@ class Sentinel3Commands {
         }
 
         matches.filter { it.isFile }
-                .map { prod -> lstToGeotiff(prod.file.absolutePath) }
+                .map { prod -> rebuildLST(prod.file.absolutePath) }
     }
 
-
     @ShellMethod("Convert LST products")
-    fun lstToGeotiff(prodName: String, @ShellOption(defaultValue = "-projwin 17 41.5 21.5 39.5") outputOptions: String = "colScaled.txt") {
+    fun rebuildLST(prodName: String, @ShellOption(defaultValue = "-projwin 17 41.5 21.5 39.5") outputOptions: String = "") {
         println(" * Converting $prodName...")
+        val lstFile = NetcdfDataset.openDataset("$prodName/LST_in.nc")
+        val geodeticFile = NetcdfDataset.openDataset("$prodName/geodetic_in.nc")
+        val flags = NetcdfDataset.openDataset("$prodName/flags_in.nc")
+
+        val lstData = lstFile.findVariable("LST").read() as ArrayFloat.D2
+        val latData = geodeticFile.findVariable("latitude_in").read() as ArrayDouble.D2
+        val lonData = geodeticFile.findVariable("longitude_in").read() as ArrayDouble.D2
+        val confidenceIn = flags.findVariable("confidence_in").read() as ArrayShort.D2
+
+        val shape = lstData.shape
+
+        // convert float to short
+        val lstDataConv = ArrayShort.D2(shape[0], shape[1])
+        var cloud = 0
+
+        for(y in 0 until lstData.shape[0])
+            for(x in 0 until lstData.shape[1]) {
+                if (lstData[y, x].isNaN())
+                    lstDataConv[y, x] = 0
+                else if(DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384) {
+                    lstDataConv[y, x] = 0; cloud++
+                } else
+                    lstDataConv[y, x] = lstData[y, x].toShort()
+            }
+
+        println("cloudy pixels $cloud of ${shape[0] * shape[1]}")
+
+        val dimensions = lstFile.findVariable("LST").dimensions
+
+        val writer = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted.nc")
+
+        val newDimensions = mutableListOf<Dimension>(
+            writer.addDimension(null, dimensions[0].fullName, dimensions[0].length),
+            writer.addDimension(null, dimensions[1].fullName, dimensions[1].length)
+        )
+
+        // populate
+        val lstn = writer.addVariable(null, "surface_temperature", DataType.SHORT, newDimensions)
+        lstn.addAll(lstFile.findVariable("LST").attributes)
+
+
+        val lat = writer.addVariable(null, "lat", DataType.DOUBLE, newDimensions)
+        lat.addAll(geodeticFile.findVariable("latitude_in").attributes)
+
+        val lon = writer.addVariable(null, "lon", DataType.DOUBLE, newDimensions)
+        lon.addAll(geodeticFile.findVariable("longitude_in").attributes)
+
+//        writer.addGroupAttribute(null, Attribute("Conventions", "CF-1.0"))
+
+        // create the file
+        try {
+            writer.create()
+            writer.write(lstn, lstDataConv)
+            writer.write(lat, latData)
+            writer.write(lon, lonData)
+        } catch (e: IOException) {
+            print("ERROR creating file $prodName/reformatted.nc: ${e.message}")
+        }
+
+        writer.close()
+        lstFile.close()
+        geodeticFile.close()
+        flags.close()
+
         val wgs84 = SpatialReference()
         wgs84.ImportFromEPSG(4326)
 
@@ -53,118 +116,9 @@ class Sentinel3Commands {
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
 //        lst.GetRasterBand(1).SetNoDataValue(0.0)
 
-        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc")), TermProgressCallback())
-
-//        val warp = gdal.AutoCreateWarpedVRT(lst, wgs84.ExportToWkt())
-//        println(gdal.GDALInfo(warp, null))
-//        gdal.Translate("$prodName/lst.tif", warp, TranslateOptions( gdal.ParseCommandLine("-oo GTIFF_HONOUR_NEGATIVE_SCALEY=YES")) )
+        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")), EsbGdalCallback())
 
         lst.delete()
-    }
-
-    @ShellMethod("Convert LST products")
-    fun rebuildLST(prodName: String ) {
-        val lstFile = NetcdfDataset.openDataset("$prodName/LST_in.nc")
-        val geodeticFile = NetcdfDataset.openDataset("$prodName/geodetic_in.nc")
-
-        val lstData = lstFile.findVariable("LST").read() as ArrayFloat.D2
-        val latData = geodeticFile.findVariable("latitude_in").read() as ArrayDouble.D2
-        val lonData = geodeticFile.findVariable("longitude_in").read() as ArrayDouble.D2
-
-        val shape = lstData.shape
-
-        // convert float to short
-        val lstDataConv = ArrayShort.D2(shape[0], shape[1])
-
-        for(y in 0 until lstData.shape[0])
-            for(x in 0 until lstData.shape[1])
-                if(lstData[y, x].isNaN())
-                    lstDataConv[y, x] = 0
-                else
-                    lstDataConv[y, x] = lstData[y, x].toShort()
-
-        val dimensions = lstFile.findVariable("LST").dimensions
-
-        val writer = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted.nc")
-
-        val newDimensions = mutableListOf<Dimension>(
-            writer.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-            writer.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
-
-        // populate
-        val lst = writer.addVariable(null, "surface_temperature", DataType.SHORT, newDimensions)
-        lst.addAll(lstFile.findVariable("LST").attributes)
-
-
-        val lat = writer.addVariable(null, "lat", DataType.DOUBLE, newDimensions)
-        lat.addAll(geodeticFile.findVariable("latitude_in").attributes)
-
-        val lon = writer.addVariable(null, "lon", DataType.DOUBLE, newDimensions)
-        lon.addAll(geodeticFile.findVariable("longitude_in").attributes)
-
-//        writer.addGroupAttribute(null, Attribute("Conventions", "CF-1.0"))
-
-        // create the file
-        try {
-            writer.create()
-            writer.write(lst, lstData)
-            writer.write(lat, latData)
-            writer.write(lon, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted.nc: ${e.message}")
-        }
-
-        writer.close()
-        lstFile.close()
-        geodeticFile.close()
-    }
-
-    @ShellMethod("Convert LFR products")
-    fun ogviConvert(prodName: String ) {
-        println(" * Converting $prodName...")
-        val wgs84 = SpatialReference()
-        wgs84.ImportFromEPSG(4326)
-
-        val ogvi = gdal.Open("HDF5:$prodName/ogvi.nc://OGVI")
-        val map = mapOf(
-                "LINE_OFFSET" to "1", "LINE_STEP" to "1",
-                "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
-                "X_BAND" to "1", "X_DATASET" to "HDF5:$prodName/geo_coordinates.nc://longitude",
-                "Y_BAND" to "1", "Y_DATASET" to "HDF5:$prodName/geo_coordinates.nc://latitude"
-        )
-
-        ogvi.SetMetadata(Hashtable(map), "GEOLOCATION")
-
-        gdal.Warp("$prodName/ogvi.tif", arrayOf(ogvi), WarpOptions(gdal.ParseCommandLine("-geoloc")))
-
-        println(" * Complete")
-    }
-
-    @ShellMethod("Convert LST products")
-    fun lstConvert(prodName: String ) {
-        println(" * Converting $prodName...")
-        val wgs84 = SpatialReference()
-        wgs84.ImportFromEPSG(4326)
-
-        val lst = gdal.Open("HDF5:$prodName/LST_in.nc://LST")
-        val map = mapOf(
-                "LINE_OFFSET" to "1", "LINE_STEP" to "1",
-                "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
-                "X_BAND" to "1", "X_DATASET" to "HDF5:$prodName/geodetic_in.nc://longitude_in",
-                "Y_BAND" to "1", "Y_DATASET" to "HDF5:$prodName/geodetic_in.nc://latitude_in"
-        )
-
-        lst.SetMetadata(Hashtable(map), "GEOLOCATION")
-
-        val dest = gdal.AutoCreateWarpedVRT(lst, wgs84.ExportToWkt())
-        println(gdal.GDALInfo(dest, null))
-        gdal.Warp(dest, arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc")))
-        gdal.Warp("$prodName/lst_warp.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc")))
-
-        gdal.Translate("$prodName/lst.tif", dest, null)
-
-        println(" * Complete")
     }
 
     @ShellMethod("gdal info")
@@ -172,4 +126,15 @@ class Sentinel3Commands {
         println(gdal.GDALInfo(gdal.Open(prodName), InfoOptions(gdal.ParseCommandLine("-hist -stats"))))
     }
 
+    class EsbGdalCallback: ProgressCallback() {
+        override fun run(dfComplete: Double, pszMessage: String?): Int {
+
+            print("\r * ${dfComplete.format(2)} $pszMessage ")
+            if(dfComplete == 1.0) println()
+            return super.run(dfComplete, pszMessage)
+        }
+    }
+
 }
+
+fun Double.format(digits: Int) = java.lang.String.format("%.${digits}f", this)
