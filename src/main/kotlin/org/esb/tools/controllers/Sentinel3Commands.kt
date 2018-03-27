@@ -24,7 +24,7 @@ import java.util.*
 class Sentinel3Commands {
 
     @ShellMethod("Convert and merge multiple OCN products")
-    fun lstProcessAndMerge(pattern: String) {
+    fun lstMerge(pattern: String, @ShellOption(defaultValue = "-projwin 17 41.5 21.5 39.5") outputOptions: String = "") {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if(matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
@@ -33,10 +33,11 @@ class Sentinel3Commands {
 
         matches.filter { it.isFile }
                 .map { prod -> rebuildLST(prod.file.absolutePath) }
+
     }
 
     @ShellMethod("Convert LST products")
-    fun rebuildLST(prodName: String, @ShellOption(defaultValue = "-projwin 17 41.5 21.5 39.5") outputOptions: String = "") {
+    fun rebuildLST(prodName: String) {
         println(" * Converting $prodName...")
         val lstFile = NetcdfDataset.openDataset("$prodName/LST_in.nc")
         val geodeticFile = NetcdfDataset.openDataset("$prodName/geodetic_in.nc")

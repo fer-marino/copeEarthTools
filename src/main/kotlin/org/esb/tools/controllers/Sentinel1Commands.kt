@@ -44,7 +44,7 @@ class Sentinel1Commands {
     }
 
     @ShellMethod("Convert and merge multiple OCN products")
-    fun ocnMergeGeotiff(pattern: String, @ShellOption(defaultValue = "-projwin 17 41.5 21.5 39.5") outputOptions:String) {
+    fun ocnMergeGeotiff(pattern: String, @ShellOption(defaultValue = "-projwin 7.5 44 21.5 35") outputOptions:String) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if(matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
@@ -54,13 +54,13 @@ class Sentinel1Commands {
         val uList = mutableListOf<Dataset>()
         val vList = mutableListOf<Dataset>()
         matches.filter { it.isFile }
-                .map { prod -> ocnToAsciiGrid(prod.file.absolutePath, volatile =  true) }
+                .map { prod -> ocnToAsciiGrid(prod.file.absolutePath, volatile =  false) }
                 .forEach { uList.add(it.first); vList.add(it.second) }
 
         val umerge = gdal.BuildVRT("umerge", uList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-r cubicspline -resolution average")) )
         val vmerge = gdal.BuildVRT("vmerge", vList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-r cubicspline -resolution average")) )
         val t = gdal.BuildVRT("merge", arrayOf(umerge, vmerge), BuildVRTOptions( gdal.ParseCommandLine("-separate")) )
-
+        println(" * Merging...")
         gdal.Translate("winds.tif", t, TranslateOptions( gdal.ParseCommandLine("-of gtiff -oo COMPRESS=LZW $outputOptions") ) )
 
         vList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
@@ -80,14 +80,18 @@ class Sentinel1Commands {
         val wgs84 = SpatialReference()
         wgs84.ImportFromEPSG(4326)
 
-        val direction = gdal.Open("NETCDF:$prodName:owiWindDirection")
-        val speed = gdal.Open("NETCDF:$prodName:owiWindSpeed")
+        val prodFile = Files.list(Paths.get(prodName, "measurement")).findFirst()
+
+        if(!prodFile.isPresent) throw IllegalArgumentException("no measurement file found. Corrupted product?")
+
+        val direction = gdal.Open("NETCDF:${prodFile.get()}:owiWindDirection")
+        val speed = gdal.Open("NETCDF:${prodFile.get()}:owiWindSpeed")
 
         val map = mapOf(
                 "LINE_OFFSET" to "1", "LINE_STEP" to "1",
                 "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
-                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName:owiLon",
-                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName:owiLat"
+                "X_BAND" to "1", "X_DATASET" to "NETCDF:${prodFile.get()}:owiLon",
+                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:${prodFile.get()}:owiLat"
         )
         direction.SetMetadata(Hashtable(map), "GEOLOCATION")
         speed.SetMetadata(Hashtable(map), "GEOLOCATION")
@@ -95,9 +99,9 @@ class Sentinel1Commands {
         val directionWarp = gdal.AutoCreateWarpedVRT(direction, wgs84.ExportToWkt())
         val speedWarp = gdal.AutoCreateWarpedVRT(speed, wgs84.ExportToWkt())
 
-        val uFilename = if(volatile) Files.createTempFile("U-", ".tif").toString() else "U10"
+        val uFilename = if(volatile) Files.createTempFile("U-", ".tif").toString() else "$prodName/U10.tif"
         val u = gdal.GetDriverByName("MEM").CreateCopy(uFilename, directionWarp)
-        val vFilename = if(volatile) Files.createTempFile("V-", ".tif").toString() else "V10"
+        val vFilename = if(volatile) Files.createTempFile("V-", ".tif").toString() else "$prodName/V10.tif"
         val v = gdal.GetDriverByName("MEM").CreateCopy(vFilename, directionWarp)
 
         val no_data = Array(1, {0.0})

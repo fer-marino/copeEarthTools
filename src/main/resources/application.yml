@@ -1,0 +1,2 @@
+logging.level.root: error
+dhus.url: "https://scihub.copernicus.eu/apihub"
