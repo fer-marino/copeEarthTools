@@ -1,6 +1,9 @@
 package org.esb.tools
 
+import java.nio.file.Files
+import java.nio.file.Paths
 import java.text.DecimalFormat
+
 
 class Utils {
     companion object {
@@ -18,5 +21,13 @@ class Utils {
             return real to imaginary
         }
 
+        fun isAscending(product: String): Boolean {
+            val xmlInput = Files.list(Paths.get(product)).filter { it.toString().contains("manifest") }.findFirst()
+            return !Files.lines(xmlInput.get()).anyMatch { it.toLowerCase().contains("descending") }
+        }
+
     }
+
 }
+
+fun Double.format(digits: Int) = java.lang.String.format("%.${digits}f", this)

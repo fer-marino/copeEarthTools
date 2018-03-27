@@ -1,7 +1,6 @@
 package org.esb.tools.controllers
 
 import org.gdal.gdal.InfoOptions
-import org.gdal.gdal.ProgressCallback
 import org.gdal.gdal.WarpOptions
 import org.gdal.gdal.gdal
 import org.gdal.osr.SpatialReference
@@ -117,7 +116,7 @@ class Sentinel3Commands {
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
 //        lst.GetRasterBand(1).SetNoDataValue(0.0)
 
-        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")), EsbGdalCallback())
+        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
 
         lst.delete()
     }
@@ -127,15 +126,5 @@ class Sentinel3Commands {
         println(gdal.GDALInfo(gdal.Open(prodName), InfoOptions(gdal.ParseCommandLine("-hist -stats"))))
     }
 
-    class EsbGdalCallback: ProgressCallback() {
-        override fun run(dfComplete: Double, pszMessage: String?): Int {
-
-            print("\r * ${dfComplete.format(2)} $pszMessage ")
-            if(dfComplete == 1.0) println()
-            return super.run(dfComplete, pszMessage)
-        }
-    }
-
 }
 
-fun Double.format(digits: Int) = java.lang.String.format("%.${digits}f", this)

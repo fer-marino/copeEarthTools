@@ -71,7 +71,7 @@ class DhusCommands {
                 var skipCount = 0
                 if (feed.containsKey("entry")) {
                     for (entry in feed["entry"] as List<Map<String, Any>>) {
-                        if (! Files.list(Paths.get(destination)).map{it.toString()}.anyMatch { it.contains(entry["title"].toString()) } ) {
+                        if (!(Files.exists(Paths.get(destination)) && Files.list(Paths.get(destination)).map{it.toString()}.anyMatch { it.contains(entry["title"].toString()) } )) {
                             if (skipCount != 0) {
                                 println(" * Skipped $skipCount products as already downloaded")
                                 skipCount = 0

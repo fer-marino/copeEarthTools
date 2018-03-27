@@ -1,10 +1,7 @@
 package org.esb.tools.controllers
 
 import org.esb.tools.Utils
-import org.gdal.gdal.BuildVRTOptions
-import org.gdal.gdal.Dataset
-import org.gdal.gdal.TranslateOptions
-import org.gdal.gdal.gdal
+import org.gdal.gdal.*
 import org.gdal.osr.SpatialReference
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.shell.standard.ShellComponent
@@ -51,23 +48,46 @@ class Sentinel1Commands {
             return
         }
 
-        val uList = mutableListOf<Dataset>()
-        val vList = mutableListOf<Dataset>()
-        matches.filter { it.isFile }
-                .map { prod -> ocnToAsciiGrid(prod.file.absolutePath, volatile =  false) }
-                .forEach { uList.add(it.first); vList.add(it.second) }
+        val uListA = mutableListOf<Dataset>(); val uListD = mutableListOf<Dataset>()
+        val vListA = mutableListOf<Dataset>(); val vListD = mutableListOf<Dataset>()
+        matches.filter { it.isFile }.forEach {
+            val t = ocnToAsciiGrid(it.file.absolutePath, volatile =  false)
+            if(Utils.isAscending(it.file.absolutePath)) {
+                uListA.add(t.first); vListA.add(t.second)
+            } else {
+                uListD.add(t.first); vListD.add(t.second)
+            }
+        }
 
-        val umerge = gdal.BuildVRT("umerge", uList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-r cubicspline -resolution average")) )
-        val vmerge = gdal.BuildVRT("vmerge", vList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-r cubicspline -resolution average")) )
-        val t = gdal.BuildVRT("merge", arrayOf(umerge, vmerge), BuildVRTOptions( gdal.ParseCommandLine("-separate")) )
-        println(" * Merging...")
-        gdal.Translate("winds.tif", t, TranslateOptions( gdal.ParseCommandLine("-of gtiff -oo COMPRESS=LZW $outputOptions") ) )
+        if(uListA.isNotEmpty()) {
+            val umergea = gdal.BuildVRT("umergea", uListA.toTypedArray(), BuildVRTOptions(gdal.ParseCommandLine("-r cubicspline -resolution average")))
+            val vmergea = gdal.BuildVRT("vmergea", vListA.toTypedArray(), BuildVRTOptions(gdal.ParseCommandLine("-r cubicspline -resolution average")))
+            val tA = gdal.BuildVRT("mergea", arrayOf(umergea, vmergea), BuildVRTOptions(gdal.ParseCommandLine("-separate")))
+            println(" * Merging ${uListA.size} ascending products...")
+            Thread.sleep(500)
+            gdal.Translate("winds-ascending.tif", tA, TranslateOptions(gdal.ParseCommandLine("-of gtiff -oo COMPRESS=LZW $outputOptions")), TermProgressCallback())
+            Thread.sleep(500)
+            tA.delete()
+            umergea.delete()
+            vmergea.delete()
+        }
+        if(uListD.isNotEmpty()) {
+            val umerged = gdal.BuildVRT("umerged", uListD.toTypedArray(), BuildVRTOptions(gdal.ParseCommandLine("-r cubicspline -resolution average")))
+            val vmerged = gdal.BuildVRT("vmerged", vListD.toTypedArray(), BuildVRTOptions(gdal.ParseCommandLine("-r cubicspline -resolution average")))
+            val tD = gdal.BuildVRT("merged", arrayOf(umerged, vmerged), BuildVRTOptions(gdal.ParseCommandLine("-separate")))
+            println(" * Merging ${uListD.size} descending products...")
+            Thread.sleep(500)
+            gdal.Translate("winds-decending.tif", tD, TranslateOptions(gdal.ParseCommandLine("-of gtiff -oo COMPRESS=LZW $outputOptions")), TermProgressCallback())
+            Thread.sleep(500)
+            tD.delete()
+            umerged.delete()
+            vmerged.delete()
+        }
+        if(uListA.isEmpty() && uListD.isEmpty())
+            println(" * Nothing to merge")
 
-        vList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
-        uList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
-        t.delete()
-        umerge.delete()
-        vmerge.delete()
+//        vList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
+//        uList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
 
         println(" * done")
     }

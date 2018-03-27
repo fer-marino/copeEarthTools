@@ -24,6 +24,8 @@ apply plugin: "application"
 apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
 
+String osName = "windows"
+
 group = 'org.earthstartsbeating'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = 1.8
@@ -59,8 +61,10 @@ dependencies {
     // GEO
     compile 'com.esri.geometry:esri-geometry-api:2.0.0'
     compile "edu.ucar:cdm:${netcdfJavaVersion}"
-//    compile group: 'org.gdal', name: 'gdal', version: '2.2.0'
-    compile files("C:\\Program Files\\GDAL\\java\\gdal.jar")
+    if(osName.contains("windows"))
+        compile files("C:\\Program Files\\GDAL\\java\\gdal.jar")
+    else
+        compile 'org.gdal:gdal:2.2.0'
 
     // utils
     compile 'commons-io:commons-io:2.6'
