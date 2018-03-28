@@ -86,9 +86,6 @@ class Sentinel1Commands {
         if(uListA.isEmpty() && uListD.isEmpty())
             println(" * Nothing to merge")
 
-//        vList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
-//        uList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
-
         println(" * done")
     }
 

@@ -1,8 +1,7 @@
 package org.esb.tools.controllers
 
-import org.gdal.gdal.InfoOptions
-import org.gdal.gdal.WarpOptions
-import org.gdal.gdal.gdal
+import org.esb.tools.Utils
+import org.gdal.gdal.*
 import org.gdal.osr.SpatialReference
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.shell.standard.ShellComponent
@@ -16,6 +15,8 @@ import ucar.nc2.Dimension
 import ucar.nc2.NetcdfFileWriter
 import ucar.nc2.dataset.NetcdfDataset
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.Paths
 import java.util.*
 
 
@@ -30,14 +31,30 @@ class Sentinel3Commands {
             return
         }
 
-        matches.filter { it.isFile }
-                .map { prod -> rebuildLST(prod.file.absolutePath) }
+        val ascending = mutableListOf<String>()
+        val descending = mutableListOf<String>()
+
+        matches.filter { it.isFile }.forEach {
+            rebuildLST(it.file.absolutePath)
+            if( Utils.isAscending(it.file.absolutePath) )
+                ascending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
+            else
+                descending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
+        }
+
+        var t = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+        gdal.Translate("ascending.tif", t, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+        t.delete()
+
+        t = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+        gdal.Translate("descending.tif", t, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+        t.delete()
 
     }
 
     @ShellMethod("Convert LST products")
     fun rebuildLST(prodName: String) {
-        println(" * Converting $prodName...")
+        print(" * Converting $prodName... ")
         val lstFile = NetcdfDataset.openDataset("$prodName/LST_in.nc")
         val geodeticFile = NetcdfDataset.openDataset("$prodName/geodetic_in.nc")
         val flags = NetcdfDataset.openDataset("$prodName/flags_in.nc")
@@ -63,7 +80,7 @@ class Sentinel3Commands {
                     lstDataConv[y, x] = lstData[y, x].toShort()
             }
 
-        println("cloudy pixels $cloud of ${shape[0] * shape[1]}")
+        print("cloudy pixels $cloud of ${shape[0] * shape[1]} ")
 
         val dimensions = lstFile.findVariable("LST").dimensions
 
@@ -117,8 +134,22 @@ class Sentinel3Commands {
 //        lst.GetRasterBand(1).SetNoDataValue(0.0)
 
         gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
+        val out = Paths.get("$prodName/lst_warp_rebuild.tif")
+        while(true) {
+            if(Files.notExists(out)) {
+                Thread.sleep(500)
+                continue
+            }
 
+            if(Files.size(out) < 50_000) {
+                Thread.sleep(500)
+                continue
+            }
+
+            break
+        }
         lst.delete()
+        println("done")
     }
 
     @ShellMethod("gdal info")
