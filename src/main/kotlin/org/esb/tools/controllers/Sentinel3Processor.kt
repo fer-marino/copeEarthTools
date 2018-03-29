@@ -1,4 +1,4 @@
-package com.serco.dias.demospring5kt.controllers
+package org.esb.tools.controllers
 
 import imageTracer.GeoJsonUtils
 import imageTracer.ImageTracer
@@ -17,7 +17,6 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.HashMap
 import javax.imageio.ImageIO
-import kotlin.system.exitProcess
 
 @ShellComponent("Sentinel 3 Processor")
 class Sentinel3Processor {
