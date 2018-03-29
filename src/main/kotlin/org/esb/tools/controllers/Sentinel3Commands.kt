@@ -3,6 +3,7 @@ package org.esb.tools.controllers
 import org.esb.tools.Utils
 import org.gdal.gdal.*
 import org.gdal.osr.SpatialReference
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
@@ -19,12 +20,13 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
 
-
 @ShellComponent
 class Sentinel3Commands {
 
+    @Value("\${shapeFile:Europe_coastline.shp}") lateinit var shapeFile: String
+
     @ShellMethod("Convert and merge multiple OCN products")
-    fun lstMerge(pattern: String, @ShellOption(defaultValue = "-projwin 17 41.5 21.5 39.5") outputOptions: String = "") {
+    fun lstMerge(pattern: String, @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "") {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if(matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
@@ -42,14 +44,32 @@ class Sentinel3Commands {
                 descending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
         }
 
-        var t = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
-        gdal.Translate("ascending.tif", t, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
-        t.delete()
+        ascending.sort()
+        descending.sort()
+        print(" * Merging...")
+        val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+        val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
 
-        t = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
-        gdal.Translate("descending.tif", t, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
-        t.delete()
+        gdal.Translate("ascending.tif", asc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+        gdal.Translate("descending.tif", desc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
 
+        while(true) {
+            if(Files.notExists(Paths.get("ascending.tif"))) {
+                Thread.sleep(500)
+                continue
+            }
+
+            if(Files.size(Paths.get("ascending.tif")) < 50_000) {
+                Thread.sleep(500)
+                continue
+            }
+
+            break
+        }
+
+        desc.delete()
+        asc.delete()
+        println("done")
     }
 
     @ShellMethod("Convert LST products")
@@ -71,16 +91,19 @@ class Sentinel3Commands {
         var cloud = 0
 
         for(y in 0 until lstData.shape[0])
-            for(x in 0 until lstData.shape[1]) {
-                if (lstData[y, x].isNaN())
-                    lstDataConv[y, x] = 0
-                else if(DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384) {
-                    lstDataConv[y, x] = 0; cloud++
-                } else
-                    lstDataConv[y, x] = lstData[y, x].toShort()
-            }
+            for(x in 0 until lstData.shape[1])
+                when {
+                    !(x in 30..lstData.shape[1]-30 || y in 30..lstData.shape[0]-30) -> lstDataConv[y, x] = -32767 // stay away from borders
+                    lstData[y, x].isNaN() -> lstDataConv[y, x] = -32767 // no data
+                    DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384 -> {
+                        lstDataConv[y, x] = -32767
+                        cloud++
+                    }
+                    else -> lstDataConv[y, x] = lstData[y, x].toShort()
+                }
 
-        print("cloudy pixels $cloud of ${shape[0] * shape[1]} ")
+
+        print("cloudy pixels ${(cloud.toDouble()/(shape[0] * shape[1])*100).format(2)}%... ")
 
         val dimensions = lstFile.findVariable("LST").dimensions
 
@@ -131,9 +154,8 @@ class Sentinel3Commands {
         )
 
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
-//        lst.GetRasterBand(1).SetNoDataValue(0.0)
 
-        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
+        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -cutline $shapeFile")))
         val out = Paths.get("$prodName/lst_warp_rebuild.tif")
         while(true) {
             if(Files.notExists(out)) {
@@ -156,6 +178,8 @@ class Sentinel3Commands {
     fun info(prodName: String) {
         println(gdal.GDALInfo(gdal.Open(prodName), InfoOptions(gdal.ParseCommandLine("-hist -stats"))))
     }
+
+    fun Double.format(digits: Int) = java.lang.String.format("%.${digits}f", this)
 
 }
 
