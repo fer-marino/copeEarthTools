@@ -78,6 +78,8 @@ class Sentinel3Commands {
 
     @ShellMethod("Convert LST products")
     fun rebuildLST(prodName: String) {
+        if(Files.exists(Paths.get(prodName, "lst_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "lst_warp_rebuild.tif")) > 50000) return
+
         print(" * Converting $prodName... ")
         val lstFile = NetcdfDataset.openDataset("$prodName/LST_in.nc")
         val geodeticFile = NetcdfDataset.openDataset("$prodName/geodetic_in.nc")
