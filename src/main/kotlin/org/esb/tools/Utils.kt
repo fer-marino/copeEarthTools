@@ -4,7 +4,6 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import java.text.DecimalFormat
 
-
 class Utils {
     companion object {
 
@@ -15,7 +14,7 @@ class Utils {
             return DecimalFormat("#,##0.#").format(size / Math.pow(1024.0, digitGroups.toDouble())) + " " + units[digitGroups]
         }
 
-        fun polarToRectangular(magnitude: Double, phase: Double) : Pair<Double, Double> {
+        fun polarToRectangular(magnitude: Double, phase: Double): Pair<Double, Double> {
             val real = magnitude * Math.cos(Math.toRadians(phase))
             val imaginary = magnitude * Math.sin(Math.toRadians(phase))
             return real to imaginary
@@ -25,7 +24,5 @@ class Utils {
             val xmlInput = Files.list(Paths.get(product)).filter { it.toString().contains("manifest") }.findFirst()
             return !Files.lines(xmlInput.get()).anyMatch { it.toLowerCase().contains("descending") }
         }
-
     }
-
 }

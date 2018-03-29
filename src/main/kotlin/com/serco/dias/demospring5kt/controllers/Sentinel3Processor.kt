@@ -15,23 +15,21 @@ import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.util.HashMap
+import java.util.*
 import javax.imageio.ImageIO
-import kotlin.system.exitProcess
 
 @ShellComponent("Sentinel 3 Processor")
 class Sentinel3Processor {
 
     @ShellMethod("Load biome")
-    fun loadBIOME(@ShellOption(defaultValue = "C:\\Users\\Salvatore Tarchini\\Desktop\\Data-Mining\\S3A_SL_2_LST____20171024T084607_20171024T084907_20171024T105110_0179_023_335_2340_SVL_O_NR_002.SEN3") file: String)
-    {
+    fun loadBIOME(@ShellOption(defaultValue = "C:\\Users\\Salvatore Tarchini\\Desktop\\Data-Mining\\S3A_SL_2_LST____20171024T084607_20171024T084907_20171024T105110_0179_023_335_2340_SVL_O_NR_002.SEN3") file: String) {
         val start = System.currentTimeMillis()
         val directory = file.substringBeforeLast(File.separator)
 //        println(directory)
 
-        val lst_ancillary = NetcdfDataset.openDataset(file+File.separator+"LST_ancillary_ds.nc")
-        val coordinates = NetcdfDataset.openDataset(file+File.separator+"geodetic_in.nc")
-        val instrumentData = NetcdfDataset.openDataset(file+File.separator+"indices_in.nc")
+        val lst_ancillary = NetcdfDataset.openDataset(file + File.separator + "LST_ancillary_ds.nc")
+        val coordinates = NetcdfDataset.openDataset(file + File.separator + "geodetic_in.nc")
+        val instrumentData = NetcdfDataset.openDataset(file + File.separator + "indices_in.nc")
 //        val flags = NetcdfDataset.openDataset(file+File.separator+"LST_ancillary_ds.nc")
 
 //        //val landMask = dataset.findVariable("LANDMASK").read() as ArrayFloat.D2
@@ -48,13 +46,13 @@ class Sentinel3Processor {
 //        }
 //        exitProcess(1)
 
-        val image = buildImage(biome, 29.toFloat(), outputFile = directory+File.separator+"biome.png")
+        val image = buildImage(biome, 29.toFloat(), outputFile = directory + File.separator + "biome.png")
         val data = ImageTracer.loadImageData(image)
         // data è un vettore data.heigth*data.width*4 poichè i canali sono 4 (red, green, blue, alpha)
 
         val palette = ImageTracer.getPalette(image, options)
         val svg = ImageTracer.imagedataToSVG(data, options, palette)
-        Files.write(Paths.get(directory+File.separator+"biome.svg"), svg.toByteArray())
+        Files.write(Paths.get(directory + File.separator + "biome.svg"), svg.toByteArray())
 
         val geo = ImageTracer.imagedataToGeoJson(data, options, palette, object : GeoJsonUtils.GeoCoder {
             override fun getLat(x: Double, y: Double): Float {
@@ -70,15 +68,15 @@ class Sentinel3Processor {
             }
         })
 
-        Files.write(Paths.get(directory+File.separator+"biome.json"), geo.toByteArray())
+        Files.write(Paths.get(directory + File.separator + "biome.json"), geo.toByteArray())
 
         for (mask in 0..29) {
-            val biomeClass = biomeMask(biome,mask.toDouble(),shape)
-            val image = buildImage(biomeClass, 255.toFloat(), outputFile = directory+File.separator+"biome_"+mask+".png")
+            val biomeClass = biomeMask(biome, mask.toDouble(), shape)
+            val image = buildImage(biomeClass, 255.toFloat(), outputFile = directory + File.separator + "biome_" + mask + ".png")
             val data = ImageTracer.loadImageData(image)
             val palette = ImageTracer.getPalette(image, options)
             val svg = ImageTracer.imagedataToSVG(data, options, palette)
-            Files.write(Paths.get(directory+File.separator+"biome_"+mask+".svg"), svg.toByteArray())
+            Files.write(Paths.get(directory + File.separator + "biome_" + mask + ".svg"), svg.toByteArray())
 
             val geo = ImageTracer.imagedataToGeoJson(data, options, palette, object : GeoJsonUtils.GeoCoder {
                 override fun getLat(x: Double, y: Double): Float {
@@ -94,7 +92,7 @@ class Sentinel3Processor {
                 }
             })
 
-            Files.write(Paths.get(directory+File.separator+"biome_"+mask+".json"), geo.toByteArray())
+            Files.write(Paths.get(directory + File.separator + "biome_" + mask + ".json"), geo.toByteArray())
         }
 
         coordinates.close()
@@ -109,9 +107,9 @@ class Sentinel3Processor {
         val directory = file.substringBeforeLast(File.separator)
 //        println(directory)
 
-        val dataset_ogvi = NetcdfDataset.openDataset(file+File.separator+"ogvi.nc")
-        val coordinates = NetcdfDataset.openDataset(file+File.separator+"geo_coordinates.nc")
-        val instrumentData = NetcdfDataset.openDataset(file+File.separator+"instrument_data.nc")
+        val dataset_ogvi = NetcdfDataset.openDataset(file + File.separator + "ogvi.nc")
+        val coordinates = NetcdfDataset.openDataset(file + File.separator + "geo_coordinates.nc")
+        val instrumentData = NetcdfDataset.openDataset(file + File.separator + "instrument_data.nc")
 
         //val landMask = dataset.findVariable("LANDMASK").read() as ArrayFloat.D2
         val lat = coordinates.findVariable("latitude").read() as ArrayDouble.D2
@@ -139,7 +137,7 @@ class Sentinel3Processor {
         val palette = ImageTracer.getPalette(image, options)
 //        var vector = ImageTracer.imagedataToTracedata(data, options, palette)
         val svg = ImageTracer.imagedataToSVG(data, options, palette)
-        Files.write(Paths.get(directory+File.separator+"ogvi.svg"), svg.toByteArray())
+        Files.write(Paths.get(directory + File.separator + "ogvi.svg"), svg.toByteArray())
 
 //        println(data.height)
 //        println(data.width)
@@ -171,7 +169,7 @@ class Sentinel3Processor {
             }
         })
 
-        Files.write(Paths.get(directory+File.separator+"ogviJson.json"), geo.toByteArray())
+        Files.write(Paths.get(directory + File.separator + "ogviJson.json"), geo.toByteArray())
 
         coordinates.close()
         dataset_ogvi.close()
@@ -183,8 +181,8 @@ class Sentinel3Processor {
         val width = aIn.shape[1]
         val height = aIn.shape[0]
         val im = BufferedImage(width, height, BufferedImage.TYPE_4BYTE_ABGR)
-        for(w in 0 until width -1)
-            for(h in 0 until height -1) {
+        for (w in 0 until width - 1)
+            for (h in 0 until height - 1) {
 //                if(aIn[h, w] != nan) {
                     val toInt = Math.min(255, (aIn[h, w] * scaleFactor).toInt())
 //                    println(aIn[h, w])
@@ -196,8 +194,8 @@ class Sentinel3Processor {
 //                    im.setRGB(w, h, Color(0, 0, 0, 1).rgb)
             }
 
-        if(outputFile != null)
-            ImageIO.write(im, "png", Paths.get(outputFile).toFile());
+        if (outputFile != null)
+            ImageIO.write(im, "png", Paths.get(outputFile).toFile())
 
         return im
     }
@@ -206,8 +204,8 @@ class Sentinel3Processor {
         val width = aIn.shape[1]
         val height = aIn.shape[0]
         val im = BufferedImage(width, height, BufferedImage.TYPE_4BYTE_ABGR)
-        for(w in 0 until width -1)
-            for(h in 0 until height -1) {
+        for (w in 0 until width - 1)
+            for (h in 0 until height - 1) {
 //                if(aIn[h, w] != nan) {
                 val toInt = Math.min(255, (aIn[h, w] * scaleFactor).toInt())
 //                    println(aIn[h, w])
@@ -219,8 +217,8 @@ class Sentinel3Processor {
 //                    im.setRGB(w, h, Color(0, 0, 0, 1).rgb)
             }
 
-        if(outputFile != null)
-            ImageIO.write(im, "png", Paths.get(outputFile).toFile());
+        if (outputFile != null)
+            ImageIO.write(im, "png", Paths.get(outputFile).toFile())
 
         return im
     }
@@ -229,9 +227,9 @@ class Sentinel3Processor {
         val width = aIn.shape[1]
         val height = aIn.shape[0]
         val im = BufferedImage(width, height, BufferedImage.TYPE_4BYTE_ABGR)
-        for(w in 0 until width -1)
-            for(h in 0 until height -1) {
-                if(aIn[h, w] != nan) {
+        for (w in 0 until width - 1)
+            for (h in 0 until height - 1) {
+                if (aIn[h, w] != nan) {
                     val toInt = Math.min(255, (aIn[h, w] * scaleFactor).toInt())
                     val c = Color(toInt, toInt, toInt)
 //                    println(toInt)
@@ -240,28 +238,27 @@ class Sentinel3Processor {
                     im.setRGB(w, h, Color(0, 0, 0, 1).rgb)
             }
 
-        if(outputFile != null)
-            ImageIO.write(im, "png", Paths.get(outputFile).toFile());
+        if (outputFile != null)
+            ImageIO.write(im, "png", Paths.get(outputFile).toFile())
 
         return im
     }
 
-    private fun biomeMask(aIn: ArrayByte.D2, maskValue: Double, shp: IntArray):ArrayByte.D2 {
-        val biomeMaskVar = ArrayByte.D2(shp[0],shp[1])
+    private fun biomeMask(aIn: ArrayByte.D2, maskValue: Double, shp: IntArray): ArrayByte.D2 {
+        val biomeMaskVar = ArrayByte.D2(shp[0], shp[1])
         val ima = biomeMaskVar.index
 
-        for (i in 0..(shp[0]-1)) {
-            for (j in 0..(shp[0]-1)){
-                if (aIn.get(i,j).toDouble().equals(maskValue)) {
-                    biomeMaskVar.set(ima.set(i,j),1)
-                }else{
-                    biomeMaskVar.set(ima.set(i,j),0)
+        for (i in 0..(shp[0] - 1)) {
+            for (j in 0..(shp[0] - 1)) {
+                if (aIn.get(i, j).toDouble().equals(maskValue)) {
+                    biomeMaskVar.set(ima.set(i, j), 1)
+                } else {
+                    biomeMaskVar.set(ima.set(i, j), 0)
                 }
             }
         }
         return biomeMaskVar
     }
-
 
     private final val options = HashMap<String, Float>(15)
 
@@ -300,5 +297,4 @@ class Sentinel3Processor {
         options["blurdelta"] = 50f
         options["desc"] = 1f
     }
-
 }

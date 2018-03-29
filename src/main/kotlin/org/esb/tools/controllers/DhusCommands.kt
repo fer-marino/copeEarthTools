@@ -29,7 +29,6 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.zip.ZipInputStream
 
-
 @ShellComponent
 class DhusCommands {
     @Autowired
@@ -45,12 +44,13 @@ class DhusCommands {
     private lateinit var dhusUrl: String
 
     @ShellMethod("Query Copernicus open hub on Open Sarch API and download all the results")
-    fun searchOSearch(@ShellOption(defaultValue = "test") username: String,
-                      @ShellOption(defaultValue = "test") password: String,
-                      @ShellOption(defaultValue = "producttype:SL_2_LST___ AND timeliness:\"Near Real Time\"") filter: String,
-                      @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
-                      @ShellOption(defaultValue = "download") destination: String
-                      ): List<String> {
+    fun searchOSearch(
+        @ShellOption(defaultValue = "test") username: String,
+        @ShellOption(defaultValue = "test") password: String,
+        @ShellOption(defaultValue = "producttype:SL_2_LST___ AND timeliness:\"Near Real Time\"") filter: String,
+        @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
+        @ShellOption(defaultValue = "download") destination: String
+    ): List<String> {
         var skip = 0
         val pageSize = 100
         val out = mutableListOf<String>()
@@ -71,14 +71,13 @@ class DhusCommands {
                 var skipCount = 0
                 if (feed.containsKey("entry")) {
                     for (entry in feed["entry"] as List<Map<String, Any>>) {
-                        if (!(Files.exists(Paths.get(destination)) && Files.list(Paths.get(destination)).map{it.toString()}.anyMatch { it.contains(entry["title"].toString()) } )) {
+                        if (!(Files.exists(Paths.get(destination)) && Files.list(Paths.get(destination)).map { it.toString() }.anyMatch { it.contains(entry["title"].toString()) })) {
                             if (skipCount != 0) {
                                 println(" * Skipped $skipCount products as already downloaded")
                                 skipCount = 0
                             }
                             downloadProduct(entry["id"].toString(), entry["title"].toString(), username, password, destination)
                             unzip(entry["title"].toString(), destination, destination)
-
                         } else
                             skipCount++
 
@@ -89,7 +88,7 @@ class DhusCommands {
 
                     skip += pageSize
                 } else
-                    break;
+                    break
             } while (true)
         } catch (e: HttpStatusCodeException) {
             println("HTTP Error (${e.statusCode}): ${e.message}")
@@ -100,11 +99,12 @@ class DhusCommands {
     }
 
     @ShellMethod("Query Copernicus open hub on ODATA API and download all the results")
-    fun searchOdata(@ShellOption(defaultValue = "test") username: String,
-                    @ShellOption(defaultValue = "test") password: String,
-                    @ShellOption(defaultValue = "substringof('SR_2_LAN', Name)") filter: String,
-                    @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
-                    @ShellOption(defaultValue = "download") destination: String
+    fun searchOdata(
+        @ShellOption(defaultValue = "test") username: String,
+        @ShellOption(defaultValue = "test") password: String,
+        @ShellOption(defaultValue = "substringof('SR_2_LAN', Name)") filter: String,
+        @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
+        @ShellOption(defaultValue = "download") destination: String
     ): List<String> {
         var skip = 0
         val pageSize = 100
@@ -119,15 +119,15 @@ class DhusCommands {
                 headers.accept = listOf(MediaType.APPLICATION_JSON)
                 val entity = HttpEntity("parameters", headers)
                 val query = "$dhusUrl/odata/v1/Products?\$filter=$filter" +
-                        "&\$orderby=${orderBy}&\$skip=$skip&\$top=$pageSize"
+                        "&\$orderby=$orderBy&\$skip=$skip&\$top=$pageSize"
                 println(" * Running query $query")
                 val response = tpl.exchange(query, HttpMethod.GET, entity, ODataRoot::class.java)
 
                 println(" * Returned ${response.body.d.results.size} products in ${System.currentTimeMillis() - start}msec")
                 var skipCount = 0
                 for (entry in response.body.d.results) {
-                    if(!Files.exists(Paths.get(destination, entry.name + ".SEN3"))) {
-                        if(skipCount != 0) {
+                    if (!Files.exists(Paths.get(destination, entry.name + ".SEN3"))) {
+                        if (skipCount != 0) {
                             println(" * Skipped $skipCount products as already downloaded")
                             skipCount = 0
                         }
@@ -138,7 +138,7 @@ class DhusCommands {
                     out.add(entry.name)
                 }
 
-                if(skipCount != 0) println(" * Skipped $skipCount products as already downloaded")
+                if (skipCount != 0) println(" * Skipped $skipCount products as already downloaded")
 
                 skip += pageSize
             } while (response.body.d.results.size == pageSize)
@@ -171,7 +171,7 @@ class DhusCommands {
                     "${Math.round(stream.byteCount * 1000f / uc.contentLengthLong) / 10f}% (${Utils.readableFileSize(stream.byteCount - prev)}/sec)")
             prev = stream.byteCount
         }
-        println("\r * Download of $productName of size ${Utils.readableFileSize(prev)} finished in ${(System.currentTimeMillis() - start)/1000} seconds")
+        println("\r * Download of $productName of size ${Utils.readableFileSize(prev)} finished in ${(System.currentTimeMillis() - start) / 1000} seconds")
     }
 
     @ShellMethod("Unzip product")
@@ -202,18 +202,16 @@ class DhusCommands {
 
         println(" done")
     }
-
 }
-
 
 // Classes used to deserialize json answer from ODATA
 data class ODataEntry(
-        @JsonAlias("Id")
-        var id: String,
-        @JsonAlias("Name")
-        var name: String,
-        @JsonAlias("IngestionDate")
-        var ingestionDate: String?
+    @JsonAlias("Id")
+    var id: String,
+    @JsonAlias("Name")
+    var name: String,
+    @JsonAlias("IngestionDate")
+    var ingestionDate: String?
 )
 
 data class ODataRoot(var d: ODataResults)

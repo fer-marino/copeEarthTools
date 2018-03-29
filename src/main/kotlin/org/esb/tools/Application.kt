@@ -12,8 +12,3 @@ fun main(args: Array<String>) {
     gdal.PushErrorHandler("CPLQuietErrorHandler")
     runApplication<Application>(*args)
 }
-
-
-
-
-
