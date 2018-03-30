@@ -27,7 +27,7 @@ import java.util.*
 @ShellComponent
 class Sentinel3Commands {
 
-    @Value("\${shapeFile:Europe_coastline.shp}") lateinit var shapeFile: String
+    @Value("\${shapeFile:Europe_coastline_poly.shp}") lateinit var shapeFile: String
     @Value("\${shapeFile:Lim_Biogeografico.shp}") lateinit var shapeAmazon: String
 
     @ShellMethod("Convert and merge multiple OCN products")
@@ -208,7 +208,7 @@ class Sentinel3Commands {
 
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
 
-        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -cutline $shapeFile")))
+        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
         val out = Paths.get("$prodName/lst_warp_rebuild.tif")
         while (true) {
             if (Files.notExists(out)) {
