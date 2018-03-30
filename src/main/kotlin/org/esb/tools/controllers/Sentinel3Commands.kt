@@ -28,6 +28,7 @@ import java.util.*
 class Sentinel3Commands {
 
     @Value("\${shapeFile:Europe_coastline.shp}") lateinit var shapeFile: String
+    @Value("\${shapeFile:Lim_Biogeografico.shp}") lateinit var shapeAmazon: String
 
     @ShellMethod("Convert and merge multiple OCN products")
     fun lstMerge(pattern: String, @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "") {
@@ -76,9 +77,57 @@ class Sentinel3Commands {
         println("done")
     }
 
+    @ShellMethod("Convert and merge multiple OGVI products")
+//    fun ogviMerge(pattern: String, @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "") {
+    fun ogviMerge(pattern: String, outputOptions: String = "", shpFile: String) {
+        val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
+        if (matches.isEmpty()) {
+            println(" * No product matches the pattern '$pattern'")
+            return
+        }
+
+        val ascending = mutableListOf<String>()
+        val descending = mutableListOf<String>()
+
+        matches.filter { it.isFile }.forEach {
+            rebuildOGVI(it.file.absolutePath, shpFile)
+            if ( Utils.isAscending(it.file.absolutePath) )
+                ascending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
+            else
+                descending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
+        }
+
+        ascending.sort()
+        descending.sort()
+        print(" * Merging...")
+        val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+        val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+
+        gdal.Translate("ascending.tif", asc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+        gdal.Translate("descending.tif", desc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+
+        while (true) {
+            if (Files.notExists(Paths.get("ascending.tif"))) {
+                Thread.sleep(500)
+                continue
+            }
+
+            if (Files.size(Paths.get("ascending.tif")) < 50_000) {
+                Thread.sleep(500)
+                continue
+            }
+
+            break
+        }
+
+        desc.delete()
+        asc.delete()
+        println("done")
+    }
+
     @ShellMethod("Convert LST products")
     fun rebuildLST(prodName: String) {
-        if(Files.exists(Paths.get(prodName, "lst_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "lst_warp_rebuild.tif")) > 50000) return
+        if (Files.exists(Paths.get(prodName, "lst_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "lst_warp_rebuild.tif")) > 50000) return
 
         print(" * Converting $prodName... ")
         val lstFile = NetcdfDataset.openDataset("$prodName/LST_in.nc")
@@ -175,6 +224,108 @@ class Sentinel3Commands {
             break
         }
         lst.delete()
+        println("done")
+    }
+
+    @ShellMethod("Convert OGVI products")
+    fun rebuildOGVI(prodName: String, shpFile: String) {
+        if (Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000) return
+
+        print(" * Converting $prodName... ")
+        val ogviFile = NetcdfDataset.openDataset("$prodName/ogvi.nc")
+        val geodeticFile = NetcdfDataset.openDataset("$prodName/geo_coordinates.nc")
+//        val flags = NetcdfDataset.openDataset("$prodName/flags_in.nc")
+
+        val ogviData = ogviFile.findVariable("OGVI").read() as ArrayFloat.D2
+        val latData = geodeticFile.findVariable("latitude").read() as ArrayDouble.D2
+        val lonData = geodeticFile.findVariable("longitude").read() as ArrayDouble.D2
+//        val confidenceIn = flags.findVariable("confidence_in").read() as ArrayShort.D2
+
+        val shape = ogviData.shape
+
+        // convert float to short
+        val ogviDataConv = ArrayShort.D2(shape[0], shape[1])
+//        var cloud = 0
+
+        for (y in 0 until ogviData.shape[0])
+            for (x in 0 until ogviData.shape[1])
+                when {
+                    !(x in 30..ogviData.shape[1]-30 || y in 30..ogviData.shape[0]-30) -> ogviDataConv[y, x] = -32767 // stay away from borders
+                    ogviData[y, x].isNaN() -> ogviDataConv[y, x] = -32767 // no data
+//                    DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384 -> {
+//                        ogviDataConv[y, x] = -32767
+//                        cloud++
+//                    }
+                    else -> ogviDataConv[y, x] = ogviData[y, x].toShort()
+                }
+
+//        print("cloudy pixels ${(cloud.toDouble() / (shape[0] * shape[1])*100).format(2)}%... ")
+
+        val dimensions = ogviFile.findVariable("OGVI").dimensions
+
+        val writer = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted.nc")
+
+        val newDimensions = mutableListOf<Dimension>(
+                writer.addDimension(null, dimensions[0].fullName, dimensions[0].length),
+                writer.addDimension(null, dimensions[1].fullName, dimensions[1].length)
+        )
+
+        // populate
+        val ogvin = writer.addVariable(null, "olci_global_vegetation_index", DataType.SHORT, newDimensions)
+        ogvin.addAll(ogviFile.findVariable("OGVI").attributes)
+
+        val lat = writer.addVariable(null, "lat", DataType.DOUBLE, newDimensions)
+        lat.addAll(geodeticFile.findVariable("latitude").attributes)
+
+        val lon = writer.addVariable(null, "lon", DataType.DOUBLE, newDimensions)
+        lon.addAll(geodeticFile.findVariable("longitude").attributes)
+
+//        writer.addGroupAttribute(null, Attribute("Conventions", "CF-1.0"))
+
+        // create the file
+        try {
+            writer.create()
+            writer.write(ogvin, ogviDataConv)
+            writer.write(lat, latData)
+            writer.write(lon, lonData)
+        } catch (e: IOException) {
+            print("ERROR creating file $prodName/reformatted.nc: ${e.message}")
+        }
+
+        writer.close()
+        ogviFile.close()
+        geodeticFile.close()
+//        flags.close()
+
+        val wgs84 = SpatialReference()
+        wgs84.ImportFromEPSG(4326)
+
+        val ogvi = gdal.Open("NETCDF:$prodName/reformatted.nc:olci_global_vegetation_index")
+        val map = mapOf(
+                "LINE_OFFSET" to "1", "LINE_STEP" to "1",
+                "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
+                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted.nc:lon",
+                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted.nc:lat"
+        )
+
+        ogvi.SetMetadata(Hashtable(map), "GEOLOCATION")
+
+        gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogvi), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -cutline $shpFile")))
+        val out = Paths.get("$prodName/ogvi_warp_rebuild.tif")
+        while (true) {
+            if (Files.notExists(out)) {
+                Thread.sleep(500)
+                continue
+            }
+
+            if (Files.size(out) < 50_000) {
+                Thread.sleep(500)
+                continue
+            }
+
+            break
+        }
+        ogvi.delete()
         println("done")
     }
 
