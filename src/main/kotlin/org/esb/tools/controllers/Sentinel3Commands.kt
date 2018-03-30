@@ -79,7 +79,9 @@ class Sentinel3Commands {
 
     @ShellMethod("Convert and merge multiple OGVI products")
 //    fun ogviMerge(pattern: String, @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "") {
-    fun ogviMerge(pattern: String, outputOptions: String = "", shpFile: String) {
+//    fun ogviMerge(pattern: String, outputOptions: String = "", shpFile: String) {
+    fun ogviMerge(pattern: String, @ShellOption(defaultValue = "") outputOptions: String = "") {
+
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if (matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
@@ -90,7 +92,8 @@ class Sentinel3Commands {
         val descending = mutableListOf<String>()
 
         matches.filter { it.isFile }.forEach {
-            rebuildOGVI(it.file.absolutePath, shpFile)
+//            rebuildOGVI(it.file.absolutePath, shpFile)
+            rebuildOGVI(it.file.absolutePath)
             if ( Utils.isAscending(it.file.absolutePath) )
                 ascending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
             else
@@ -228,7 +231,8 @@ class Sentinel3Commands {
     }
 
     @ShellMethod("Convert OGVI products")
-    fun rebuildOGVI(prodName: String, shpFile: String) {
+//    fun rebuildOGVI(prodName: String, shpFile: String) {
+    fun rebuildOGVI(prodName: String) {
         if (Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000) return
 
         print(" * Converting $prodName... ")
@@ -310,7 +314,8 @@ class Sentinel3Commands {
 
         ogvi.SetMetadata(Hashtable(map), "GEOLOCATION")
 
-        gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogvi), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -cutline $shpFile")))
+//        gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogvi), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -cutline $shpFile")))
+        gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogvi), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
         val out = Paths.get("$prodName/ogvi_warp_rebuild.tif")
         while (true) {
             if (Files.notExists(out)) {

@@ -9,13 +9,11 @@ buildscript {
         jcenter()
         maven { url "https://repo.spring.io/snapshot" }
         maven { url "https://repo.spring.io/milestone" }
-        maven { url "https://plugins.gradle.org/m2/" }
     }
     dependencies {
         classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}")
         classpath("org.jetbrains.kotlin:kotlin-allopen:${kotlinVersion}")
-        classpath "gradle.plugin.org.jmailen.gradle:kotlinter-gradle:1.10.0"
     }
 }
 
@@ -25,9 +23,8 @@ apply plugin: 'idea'
 apply plugin: "application"
 apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
-apply plugin: "org.jmailen.kotlinter"
 
-String osName = "windows"
+String osName = "linux"
 
 group = 'org.earthstartsbeating'
 version = '0.0.1-SNAPSHOT'
@@ -43,7 +40,7 @@ compileTestKotlin {
 }
 
 repositories {
-    jcenter()
+    mavenCentral()
     maven { url 'https://repo.spring.io/libs-milestone' }
     maven { url "https://artifacts.unidata.ucar.edu/content/repositories/unidata-releases/" }
 }
