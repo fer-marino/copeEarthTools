@@ -24,5 +24,28 @@ class Utils {
             val xmlInput = Files.list(Paths.get(product)).filter { it.toString().contains("manifest") }.findFirst()
             return !Files.lines(xmlInput.get()).anyMatch { it.toLowerCase().contains("descending") }
         }
+
+        fun monitorFile(file: String, timeout: Int = 30000) {
+            val f = Paths.get(file)
+            val start = System.currentTimeMillis()
+            while (true) {
+                if(System.currentTimeMillis() - start > timeout) {
+                    println("Timeout reached")
+                    break
+                }
+
+                if (Files.notExists(f)) {
+                    Thread.sleep(500)
+                    continue
+                }
+
+                if (Files.size(f) < 50_000) {
+                    Thread.sleep(500)
+                    continue
+                }
+
+                break
+            }
+        }
     }
 }
