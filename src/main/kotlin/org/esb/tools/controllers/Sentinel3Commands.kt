@@ -1,11 +1,15 @@
 package org.esb.tools.controllers
 
 import org.esb.tools.Utils
+import org.esb.tools.Utils.Companion.monitorFile
 import org.gdal.gdal.BuildVRTOptions
+import org.gdal.gdal.DEMProcessingOptions
 import org.gdal.gdal.InfoOptions
+import org.gdal.gdal.TermProgressCallback
 import org.gdal.gdal.TranslateOptions
 import org.gdal.gdal.WarpOptions
 import org.gdal.gdal.gdal
+import org.gdal.gdalconst.gdalconstConstants
 import org.gdal.osr.SpatialReference
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
@@ -55,22 +59,23 @@ class Sentinel3Commands {
         val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
         val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
 
-        gdal.Translate("ascending.tif", asc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
-        gdal.Translate("descending.tif", desc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+        val da = gdal.Translate("ascending.tif", asc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+        val dd = gdal.Translate("descending.tif", desc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
 
-        while (true) {
-            if (Files.notExists(Paths.get("ascending.tif"))) {
-                Thread.sleep(500)
-                continue
-            }
+        monitorFile("ascending.tif", 60000)
+        monitorFile("descending.tif", 60000)
 
-            if (Files.size(Paths.get("ascending.tif")) < 50_000) {
-                Thread.sleep(500)
-                continue
-            }
+        gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326  -crop_to_cutline -cutline  it_10km.shp")))
+        gdal.Warp("descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326  -crop_to_cutline -cutline  it_10km.shp")))
 
-            break
-        }
+        monitorFile("ascending-warp.tif", 90000)
+        monitorFile("descending-warp.tif", 90000)
+
+        postprocess("ascending-warp.tif", 1.0, 1)
+        postprocess("descending-warp.tif", 1.0, 1)
+
+        desc.delete()
+        asc.delete()
 
         desc.delete()
         asc.delete()
@@ -79,52 +84,30 @@ class Sentinel3Commands {
 
     @ShellMethod("Convert and merge multiple OGVI products")
 //    fun ogviMerge(pattern: String, @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "") {
-//    fun ogviMerge(pattern: String, shpFile: String, @ShellOption(defaultValue = "") outputOptions: String = "") {
+//    fun ogviMerge(pattern: String, outputOptions: String = "", shpFile: String) {
     fun ogviMerge(pattern: String, @ShellOption(defaultValue = "") outputOptions: String = "") {
 
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
+                .map { it.file.absolutePath + "/ogvi_warp_rebuild.tif" }.sorted()
         if (matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
             return
         }
 
-        val ascending = mutableListOf<String>()
-        val descending = mutableListOf<String>()
 
-        matches.filter { it.isFile }.forEach {
-            rebuildOGVI(it.file.absolutePath)
-//            rebuildOGVI(it.file.absolutePath,shpFile)
-//            if ( Utils.isAscending(it.file.absolutePath) )
-//                ascending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
-//            else
-                descending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
-        }
-
-//        ascending.sort()
-        descending.sort()
         print(" * Merging...")
-//        val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
-        val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+        val dsVrt = gdal.BuildVRT("merged", Vector(matches), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+        val dd = gdal.Translate("ogvi.tif", dsVrt, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
 
-//        gdal.Translate("ascending.tif", asc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
-        gdal.Translate("descending.tif", desc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+        monitorFile("ogvi.tif", 60000)
 
-//        while (true) {
-//            if (Files.notExists(Paths.get("ascending.tif"))) {
-//                Thread.sleep(500)
-//                continue
-//            }
-//
-//            if (Files.size(Paths.get("ascending.tif")) < 50_000) {
-//                Thread.sleep(500)
-//                continue
-//            }
-//
-//            break
-//        }
+        gdal.Warp("ogvi-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326  -crop_to_cutline -cutline  it_10km.shp")))
 
-        desc.delete()
-//        asc.delete()
+        monitorFile("ogvi-warp.tif", 90000)
+
+        postprocess("ogvi-warp.tif", 1.0, 1)
+
+        dsVrt.delete()
         println("done")
     }
 
@@ -212,20 +195,7 @@ class Sentinel3Commands {
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
 
         gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
-        val out = Paths.get("$prodName/lst_warp_rebuild.tif")
-        while (true) {
-            if (Files.notExists(out)) {
-                Thread.sleep(500)
-                continue
-            }
-
-            if (Files.size(out) < 50_000) {
-                Thread.sleep(500)
-                continue
-            }
-
-            break
-        }
+        monitorFile("$prodName/lst_warp_rebuild.tif", 60000)
         lst.delete()
         println("done")
     }
@@ -260,7 +230,7 @@ class Sentinel3Commands {
 //                        ogviDataConv[y, x] = -32767
 //                        cloud++
 //                    }
-                    else -> ogviDataConv[y, x] = (ogviData[y, x]*255).toShort()
+                    else -> ogviDataConv[y, x] = ogviData[y, x].toShort()
                 }
 
 //        print("cloudy pixels ${(cloud.toDouble() / (shape[0] * shape[1])*100).format(2)}%... ")
@@ -337,6 +307,17 @@ class Sentinel3Commands {
     @ShellMethod("gdal info")
     fun info(prodName: String) {
         println(gdal.GDALInfo(gdal.Open(prodName), InfoOptions(gdal.ParseCommandLine("-hist -stats"))))
+    }
+
+    @ShellMethod("postprocess generated geotiff")
+    fun postprocess(prod: String, maxSearchDistance: Double = 2.5, smothingIterations: Int = 3) {
+        print(" * Post processing started...")
+        val inds = gdal.Open(prod, gdalconstConstants.GA_Update)
+        inds.GetRasterBand(1).SetNoDataValue(0.0)
+        gdal.FillNodata(inds.GetRasterBand(1), inds.GetRasterBand(1), maxSearchDistance, smothingIterations, null, TermProgressCallback())
+        gdal.DEMProcessing("color-$prod", inds, "color-relief", "color-table.txt", DEMProcessingOptions(gdal.ParseCommandLine("-co COMPRESS=JPEG")))
+        monitorFile("color-$prod", 90000)
+        println("done")
     }
 
     fun Double.format(digits: Int) = java.lang.String.format("%.${digits}f", this)
