@@ -79,7 +79,7 @@ class Sentinel3Commands {
 
     @ShellMethod("Convert and merge multiple OGVI products")
 //    fun ogviMerge(pattern: String, @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "") {
-//    fun ogviMerge(pattern: String, outputOptions: String = "", shpFile: String) {
+//    fun ogviMerge(pattern: String, shpFile: String, @ShellOption(defaultValue = "") outputOptions: String = "") {
     fun ogviMerge(pattern: String, @ShellOption(defaultValue = "") outputOptions: String = "") {
 
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
@@ -92,39 +92,39 @@ class Sentinel3Commands {
         val descending = mutableListOf<String>()
 
         matches.filter { it.isFile }.forEach {
-//            rebuildOGVI(it.file.absolutePath, shpFile)
             rebuildOGVI(it.file.absolutePath)
-            if ( Utils.isAscending(it.file.absolutePath) )
-                ascending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
-            else
+//            rebuildOGVI(it.file.absolutePath,shpFile)
+//            if ( Utils.isAscending(it.file.absolutePath) )
+//                ascending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
+//            else
                 descending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
         }
 
-        ascending.sort()
+//        ascending.sort()
         descending.sort()
         print(" * Merging...")
-        val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+//        val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
         val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
 
-        gdal.Translate("ascending.tif", asc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+//        gdal.Translate("ascending.tif", asc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
         gdal.Translate("descending.tif", desc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
 
-        while (true) {
-            if (Files.notExists(Paths.get("ascending.tif"))) {
-                Thread.sleep(500)
-                continue
-            }
-
-            if (Files.size(Paths.get("ascending.tif")) < 50_000) {
-                Thread.sleep(500)
-                continue
-            }
-
-            break
-        }
+//        while (true) {
+//            if (Files.notExists(Paths.get("ascending.tif"))) {
+//                Thread.sleep(500)
+//                continue
+//            }
+//
+//            if (Files.size(Paths.get("ascending.tif")) < 50_000) {
+//                Thread.sleep(500)
+//                continue
+//            }
+//
+//            break
+//        }
 
         desc.delete()
-        asc.delete()
+//        asc.delete()
         println("done")
     }
 
@@ -260,7 +260,7 @@ class Sentinel3Commands {
 //                        ogviDataConv[y, x] = -32767
 //                        cloud++
 //                    }
-                    else -> ogviDataConv[y, x] = ogviData[y, x].toShort()
+                    else -> ogviDataConv[y, x] = (ogviData[y, x]*255).toShort()
                 }
 
 //        print("cloudy pixels ${(cloud.toDouble() / (shape[0] * shape[1])*100).format(2)}%... ")
