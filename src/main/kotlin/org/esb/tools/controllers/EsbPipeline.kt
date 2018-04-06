@@ -3,6 +3,7 @@ package org.esb.tools.controllers
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
+import org.springframework.shell.standard.ShellOption
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -14,7 +15,7 @@ class EsbPipeline {
     @Autowired lateinit var dhusCommands: DhusCommands
 
     @ShellMethod("Process sentinel 3 LST product")
-    fun sen3Lst(start: String, stop: String) {
+    fun sen3Lst(start: String, stop: String, @ShellOption(defaultValue = "false") force: Boolean) {
         val startDate = LocalDateTime.parse(start, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
         val stopDate = LocalDateTime.parse(stop, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
@@ -24,7 +25,10 @@ class EsbPipeline {
                 "AND (platformname:Sentinel-3 AND producttype:SL_2_LST___ AND timeliness:\"Near Real Time\")  "
         dhusCommands.searchOSearch("test", "test", filter, "IngestionDate desc", "S3${startDate.year}-${startDate.month}")
 
-        sentinel3Commands.lstMerge("S3${startDate.year}-${startDate.month}/S3*", "-co COMPRESS=JPEG")
+        sentinel3Commands.lstMerge("S3${startDate.year}-${startDate.month}/S3*", "-projwin 6 47.5 20 35", force)
+
+        sentinel3Commands.postprocess("ascending-warp.tif", 1.5, 1)
+        sentinel3Commands.postprocess("descending-warp.tif", 1.5, 1)
     }
 
     @ShellMethod("Process sentinel 3 OGVI product")

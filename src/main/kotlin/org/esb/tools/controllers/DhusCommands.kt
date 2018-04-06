@@ -123,7 +123,7 @@ class DhusCommands {
                 println(" * Running query $query")
                 val response = tpl.exchange(query, HttpMethod.GET, entity, ODataRoot::class.java)
 
-                println(" * Returned ${response.body.d.results.size} products in ${System.currentTimeMillis() - start}msec")
+                println(" * Total products ${response.body.d.results.size} in ${System.currentTimeMillis() - start}msec")
                 var skipCount = 0
                 for (entry in response.body.d.results) {
                     if (!Files.exists(Paths.get(destination, entry.name + ".SEN3"))) {

@@ -5,13 +5,11 @@ import org.esb.tools.Utils.Companion.monitorFile
 import org.gdal.gdal.BuildVRTOptions
 import org.gdal.gdal.DEMProcessingOptions
 import org.gdal.gdal.InfoOptions
-import org.gdal.gdal.TermProgressCallback
 import org.gdal.gdal.TranslateOptions
 import org.gdal.gdal.WarpOptions
 import org.gdal.gdal.gdal
 import org.gdal.gdalconst.gdalconstConstants
 import org.gdal.osr.SpatialReference
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
@@ -31,11 +29,10 @@ import java.util.*
 @ShellComponent
 class Sentinel3Commands {
 
-    @Value("\${shapeFile:Europe_coastline_poly.shp}") lateinit var shapeFile: String
-    @Value("\${shapeFile:Lim_Biogeografico.shp}") lateinit var shapeAmazon: String
-
     @ShellMethod("Convert and merge multiple OCN products")
-    fun lstMerge(pattern: String, @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "") {
+    fun lstMerge(pattern: String,
+                 @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "",
+                 @ShellOption(defaultValue = "false")force: Boolean = false) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if (matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
@@ -46,7 +43,7 @@ class Sentinel3Commands {
         val descending = mutableListOf<String>()
 
         matches.filter { it.isFile }.forEach {
-            rebuildLST(it.file.absolutePath)
+            rebuildLST(it.file.absolutePath, force)
             if ( Utils.isAscending(it.file.absolutePath) )
                 ascending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
             else
@@ -56,30 +53,29 @@ class Sentinel3Commands {
         ascending.sort()
         descending.sort()
         print(" * Merging...")
+        val start = System.currentTimeMillis()
         val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
         val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
 
         val da = gdal.Translate("ascending.tif", asc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
         val dd = gdal.Translate("descending.tif", desc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
 
-        monitorFile("ascending.tif", 60000)
-        monitorFile("descending.tif", 60000)
+        monitorFile("ascending.tif", 160000)
+        monitorFile("descending.tif", 160000)
 
-        gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326  -crop_to_cutline -cutline  it_10km.shp")))
-        gdal.Warp("descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326  -crop_to_cutline -cutline  it_10km.shp")))
+        gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
+        monitorFile("ascending-warp.tif", 190000)
 
-        monitorFile("ascending-warp.tif", 90000)
-        monitorFile("descending-warp.tif", 90000)
-
-        postprocess("ascending-warp.tif", 1.0, 1)
-        postprocess("descending-warp.tif", 1.0, 1)
+        gdal.Warp("descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
+        monitorFile("descending-warp.tif", 190000)
 
         desc.delete()
         asc.delete()
 
         desc.delete()
         asc.delete()
-        println("done")
+
+        println(" done in ${System.currentTimeMillis() - start} msec")
     }
 
     @ShellMethod("Convert and merge multiple OGVI products")
@@ -108,7 +104,7 @@ class Sentinel3Commands {
         postprocess("ogvi-warp.tif", 1.0, 1)
 
         dsVrt.delete()
-        println("done")
+        println("complete")
     }
 
     @ShellMethod("Convert LST products")
@@ -128,19 +124,18 @@ class Sentinel3Commands {
         val shape = lstData.shape
 
         // convert float to short
-        val lstDataConv = ArrayShort.D2(shape[0], shape[1])
+
         var cloud = 0
 
         for (y in 0 until lstData.shape[0])
             for (x in 0 until lstData.shape[1])
                 when {
-                    !(x in 30..lstData.shape[1]-30 || y in 30..lstData.shape[0]-30) -> lstDataConv[y, x] = 0//-32767 // stay away from borders
-                    lstData[y, x].isNaN() -> lstDataConv[y, x] = 0//-32767 // no data
+                    !(x in 30..lstData.shape[1]-30 || y in 30..lstData.shape[0]-30) -> lstData[y, x] = 0f // stay away from borders
+                    lstData[y, x].isNaN() -> lstData[y, x] = 0f // no data
                     DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384 -> {
-                        lstDataConv[y, x] = 0//-32767
+                        lstData[y, x] = 0f
                         cloud++
                     }
-                    else -> lstDataConv[y, x] = lstData[y, x].toShort()
                 }
 
         print("cloudy pixels ${(cloud.toDouble() / (shape[0] * shape[1])*100).format(2)}%... ")
@@ -155,7 +150,7 @@ class Sentinel3Commands {
         )
 
         // populate
-        val lstn = writer.addVariable(null, "surface_temperature", DataType.SHORT, newDimensions)
+        val lstn = writer.addVariable(null, "surface_temperature", DataType.FLOAT, newDimensions)
         lstn.addAll(lstFile.findVariable("LST").attributes)
 
         val lat = writer.addVariable(null, "lat", DataType.DOUBLE, newDimensions)
@@ -169,7 +164,7 @@ class Sentinel3Commands {
         // create the file
         try {
             writer.create()
-            writer.write(lstn, lstDataConv)
+            writer.write(lstn, lstData)
             writer.write(lat, latData)
             writer.write(lon, lonData)
         } catch (e: IOException) {
@@ -194,9 +189,10 @@ class Sentinel3Commands {
 
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
 
-        gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
+        val ris = gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata 0")))
         monitorFile("$prodName/lst_warp_rebuild.tif", 60000)
         lst.delete()
+        ris.delete()
         println("done")
     }
 
@@ -311,12 +307,12 @@ class Sentinel3Commands {
 
     @ShellMethod("postprocess generated geotiff")
     fun postprocess(prod: String, maxSearchDistance: Double = 2.5, smothingIterations: Int = 3) {
-        print(" * Post processing started...")
+        print(" * Post processing started for $prod...")
         val inds = gdal.Open(prod, gdalconstConstants.GA_Update)
-        inds.GetRasterBand(1).SetNoDataValue(0.0)
-        gdal.FillNodata(inds.GetRasterBand(1), inds.GetRasterBand(1), maxSearchDistance, smothingIterations, null, TermProgressCallback())
-        gdal.DEMProcessing("color-$prod", inds, "color-relief", "color-table.txt", DEMProcessingOptions(gdal.ParseCommandLine("-co COMPRESS=JPEG")))
-        monitorFile("color-$prod", 90000)
+        inds.GetRasterBand(1)
+        gdal.FillNodata(inds.GetRasterBand(1), inds.GetRasterBand(1), maxSearchDistance, smothingIterations)
+        gdal.DEMProcessing("color-$prod", inds, "color-relief", "color-table.txt", DEMProcessingOptions(gdal.ParseCommandLine("-alpha -co COMPRESS=JPEG")))
+        monitorFile("color-$prod", 200000)
         println("done")
     }
 
