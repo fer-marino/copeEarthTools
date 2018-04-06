@@ -81,30 +81,55 @@ class Sentinel3Commands {
     @ShellMethod("Convert and merge multiple OGVI products")
 //    fun ogviMerge(pattern: String, @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "") {
 //    fun ogviMerge(pattern: String, outputOptions: String = "", shpFile: String) {
-    fun ogviMerge(pattern: String, @ShellOption(defaultValue = "") outputOptions: String = "") {
+    fun ogviMerge(pattern: String, shpFile: String, @ShellOption(defaultValue = "") outputOptions: String = "") {
 
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
-                .map { it.file.absolutePath + "/ogvi_warp_rebuild.tif" }.sorted()
         if (matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
             return
         }
 
+        val ascending = mutableListOf<String>()
+        val descending = mutableListOf<String>()
 
+        matches.filter { it.isFile }.forEach {
+            rebuildOGVI(it.file.absolutePath)
+            if ( Utils.isAscending(it.file.absolutePath) )
+                ascending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
+            else
+                descending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
+        }
+
+        ascending.sort()
+        descending.sort()
         print(" * Merging...")
-        val dsVrt = gdal.BuildVRT("merged", Vector(matches), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
-        val dd = gdal.Translate("ogvi.tif", dsVrt, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
 
-        monitorFile("ogvi.tif", 60000)
+//        try {
+//            val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
+//            val da = gdal.Translate("ascending.tif", asc, TranslateOptions(gdal.ParseCommandLine(outputOptions)))
+//            monitorFile("ascending.tif", 60000)
+//            gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326  -crop_to_cutline -cutline  $shpFile")))
+//            monitorFile("ascending-warp.tif", 90000)
+//            postprocess("ascending-warp.tif", 1.0, 1)
+//            asc.delete()
+//        } catch (e: IOException) {
+//            print("ERROR merging ascending: ${e.message}")
+//        }
 
-        gdal.Warp("ogvi-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326  -crop_to_cutline -cutline  it_10km.shp")))
+        try {
+            val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
+            val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("-a_nodata 9.969209968386869E36")))
+//            val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("-ot Float32 -a_nodata -128.49803 -scale 0 255 0 1")))
+            monitorFile("descending.tif", 60000)
+            gdal.Warp("descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326 -tr 0.02 0.02 -crop_to_cutline -cutline $shpFile")))
+            monitorFile("descending-warp.tif", 90000)
+            postprocess("descending-warp.tif", 1.0, 1)
+            desc.delete()
+        } catch (e: IOException) {
+            print("ERROR merging descending: ${e.message}")
+        }
 
-        monitorFile("ogvi-warp.tif", 90000)
-
-        postprocess("ogvi-warp.tif", 1.0, 1)
-
-        dsVrt.delete()
-        println("complete")
+        println("done")
     }
 
     @ShellMethod("Convert LST products")
@@ -198,8 +223,8 @@ class Sentinel3Commands {
 
     @ShellMethod("Convert OGVI products")
 //    fun rebuildOGVI(prodName: String, shpFile: String) {
-    fun rebuildOGVI(prodName: String) {
-        if (Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000) return
+    fun rebuildOGVI(prodName: String, force: Boolean = false) {
+        if(!force && Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000) return
 
         print(" * Converting $prodName... ")
         val ogviFile = NetcdfDataset.openDataset("$prodName/ogvi.nc")
@@ -214,19 +239,25 @@ class Sentinel3Commands {
         val shape = ogviData.shape
 
         // convert float to short
-        val ogviDataConv = ArrayShort.D2(shape[0], shape[1])
+//        val ogviDataConv = ArrayShort.D2(shape[0], shape[1])
+        val ogviDataConv = ArrayFloat.D2(shape[0], shape[1])
+
 //        var cloud = 0
 
+        val nodata = 200
         for (y in 0 until ogviData.shape[0])
             for (x in 0 until ogviData.shape[1])
                 when {
-                    !(x in 30..ogviData.shape[1]-30 || y in 30..ogviData.shape[0]-30) -> ogviDataConv[y, x] = -32767 // stay away from borders
-                    ogviData[y, x].isNaN() -> ogviDataConv[y, x] = -32767 // no data
+                    !(x in 30..ogviData.shape[1]-30 || y in 30..ogviData.shape[0]-30) || ogviDataConv[y, x] > 200  -> ogviDataConv[y, x] = nodata.toFloat() // stay away from borders
+                    ogviData[y, x].isNaN() -> ogviDataConv[y, x] = nodata.toFloat() // no data
+//                    !(x in 30..ogviData.shape[1]-30 || y in 30..ogviData.shape[0]-30) -> ogviDataConv[y, x] = -32767 // stay away from borders
+//                    ogviData[y, x].isNaN() -> ogviDataConv[y, x] = -32767 // no data
 //                    DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384 -> {
-//                        ogviDataConv[y, x] = -32767
+//                        ogviDataConv[y, x] = 0//-32767
 //                        cloud++
 //                    }
-                    else -> ogviDataConv[y, x] = ogviData[y, x].toShort()
+//                    else -> ogviDataConv[y, x] = (ogviData[y, x]*255).toShort()
+                    else -> ogviDataConv[y, x] = ogviData[y, x].toFloat()
                 }
 
 //        print("cloudy pixels ${(cloud.toDouble() / (shape[0] * shape[1])*100).format(2)}%... ")
@@ -241,7 +272,8 @@ class Sentinel3Commands {
         )
 
         // populate
-        val ogvin = writer.addVariable(null, "olci_global_vegetation_index", DataType.SHORT, newDimensions)
+//        val ogvin = writer.addVariable(null, "olci_global_vegetation_index", DataType.SHORT, newDimensions)
+        val ogvin = writer.addVariable(null, "olci_global_vegetation_index", DataType.FLOAT, newDimensions)
         ogvin.addAll(ogviFile.findVariable("OGVI").attributes)
 
         val lat = writer.addVariable(null, "lat", DataType.DOUBLE, newDimensions)
@@ -255,7 +287,8 @@ class Sentinel3Commands {
         // create the file
         try {
             writer.create()
-            writer.write(ogvin, ogviDataConv)
+            writer.write(ogvin, ogviData)
+//            writer.write(ogvin, ogviDataConv)
             writer.write(lat, latData)
             writer.write(lon, lonData)
         } catch (e: IOException) {
@@ -280,22 +313,8 @@ class Sentinel3Commands {
 
         ogvi.SetMetadata(Hashtable(map), "GEOLOCATION")
 
-//        gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogvi), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -cutline $shpFile")))
         gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogvi), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
-        val out = Paths.get("$prodName/ogvi_warp_rebuild.tif")
-        while (true) {
-            if (Files.notExists(out)) {
-                Thread.sleep(500)
-                continue
-            }
-
-            if (Files.size(out) < 50_000) {
-                Thread.sleep(500)
-                continue
-            }
-
-            break
-        }
+        monitorFile("$prodName/ogvi_warp_rebuild.tif", 60000)
         ogvi.delete()
         println("done")
     }
