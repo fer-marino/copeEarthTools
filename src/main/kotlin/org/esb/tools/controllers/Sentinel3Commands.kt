@@ -18,6 +18,7 @@ import ucar.ma2.ArrayDouble
 import ucar.ma2.ArrayFloat
 import ucar.ma2.ArrayShort
 import ucar.ma2.DataType
+import ucar.nc2.Attribute
 import ucar.nc2.Dimension
 import ucar.nc2.NetcdfFileWriter
 import ucar.nc2.dataset.NetcdfDataset
@@ -32,7 +33,7 @@ class Sentinel3Commands {
     @ShellMethod("Convert and merge multiple OCN products")
     fun lstMerge(pattern: String,
                  @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "",
-                 @ShellOption(defaultValue = "false")force: Boolean = false) {
+                 @ShellOption(defaultValue = "false") force: Boolean = false) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if (matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
@@ -44,7 +45,7 @@ class Sentinel3Commands {
 
         matches.filter { it.isFile }.forEach {
             rebuildLST(it.file.absolutePath, force)
-            if ( Utils.isAscending(it.file.absolutePath) )
+            if (Utils.isAscending(it.file.absolutePath))
                 ascending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
             else
                 descending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
@@ -54,11 +55,54 @@ class Sentinel3Commands {
         descending.sort()
         print(" * Merging...")
         val start = System.currentTimeMillis()
-        val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
-        val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
+        Files.deleteIfExists(Paths.get("mergea"))
+        Files.deleteIfExists(Paths.get("merged"))
+        var asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
+        var desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
 
-        val da = gdal.Translate("ascending.tif", asc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
-        val dd = gdal.Translate("descending.tif", desc, TranslateOptions( gdal.ParseCommandLine(outputOptions) ) )
+        gdal.Translate("mergea.vrt", asc, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
+        gdal.Translate("merged.vrt", desc, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
+
+        var t = Files.readAllLines(Paths.get("mergea.vrt"))
+        for(i in 0..t.size) {
+            if(t[i].contains("<VRTRasterBand")) {
+                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
+                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i+4, "import numpy as np")
+                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), out = out_ar)")
+                t.add(i+7, "]]>")
+                t.add(i+8, "    </PixelFunctionCode>")
+            }
+        }
+        Files.write(Paths.get("mergea.vrt"), t)
+
+        t = Files.readAllLines(Paths.get("merged.vrt"))
+        for(i in 0..t.size) {
+            if(t[i].contains("<VRTRasterBand")) {
+                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
+                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i+4, "import numpy as np")
+                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), out = out_ar)")
+                t.add(i+7, "]]>")
+                t.add(i+8, "    </PixelFunctionCode>")
+            }
+        }
+        Files.write(Paths.get("merged.vrt"), t)
+
+        asc.delete()
+        desc.delete()
+        asc = gdal.Open("mergea.vrt")
+        desc = gdal.Open("merged.vrt")
+
+
+        val da = gdal.Translate("ascending.tif", asc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
+        val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
 
         monitorFile("ascending.tif", 160000)
         monitorFile("descending.tif", 160000)
@@ -94,7 +138,7 @@ class Sentinel3Commands {
 
         matches.filter { it.isFile }.forEach {
             rebuildOGVI(it.file.absolutePath)
-            if ( Utils.isAscending(it.file.absolutePath) )
+            if (Utils.isAscending(it.file.absolutePath))
                 ascending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
             else
                 descending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
@@ -134,7 +178,7 @@ class Sentinel3Commands {
 
     @ShellMethod("Convert LST products")
     fun rebuildLST(prodName: String, force: Boolean = false) {
-        if(!force && Files.exists(Paths.get(prodName, "lst_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "lst_warp_rebuild.tif")) > 50000) return
+        if (!force && Files.exists(Paths.get(prodName, "lst_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "lst_warp_rebuild.tif")) > 50000) return
 
         print(" * Converting $prodName... ")
         val lstFile = NetcdfDataset.openDataset("$prodName/LST_in.nc")
@@ -148,43 +192,39 @@ class Sentinel3Commands {
 
         val shape = lstData.shape
 
-        // convert float to short
-
         var cloud = 0
-
         for (y in 0 until lstData.shape[0])
             for (x in 0 until lstData.shape[1])
                 when {
-                    !(x in 30..lstData.shape[1]-30 || y in 30..lstData.shape[0]-30) -> lstData[y, x] = 0f // stay away from borders
-                    lstData[y, x].isNaN() -> lstData[y, x] = 0f // no data
+                    !(x in 30..lstData.shape[1] - 30 || y in 30..lstData.shape[0] - 30) -> lstData[y, x] = Float.NaN  // stay away from borders
                     DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384 -> {
-                        lstData[y, x] = 0f
+                        lstData[y, x] = Float.NaN
                         cloud++
                     }
                 }
 
-        print("cloudy pixels ${(cloud.toDouble() / (shape[0] * shape[1])*100).format(2)}%... ")
+        print("cloudy pixels ${(cloud.toDouble() / (shape[0] * shape[1]) * 100).format(2)}%... ")
 
         val dimensions = lstFile.findVariable("LST").dimensions
 
         val writer = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted.nc")
 
         val newDimensions = mutableListOf<Dimension>(
-            writer.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-            writer.addDimension(null, dimensions[1].fullName, dimensions[1].length)
+                writer.addDimension(null, dimensions[0].fullName, dimensions[0].length),
+                writer.addDimension(null, dimensions[1].fullName, dimensions[1].length)
         )
 
         // populate
         val lstn = writer.addVariable(null, "surface_temperature", DataType.FLOAT, newDimensions)
         lstn.addAll(lstFile.findVariable("LST").attributes)
+        lstn.addAttribute(Attribute("valid_range", "200, 350"))
+        lstn.addAttribute(Attribute("_FillValue", "nan"))
 
         val lat = writer.addVariable(null, "lat", DataType.DOUBLE, newDimensions)
         lat.addAll(geodeticFile.findVariable("latitude_in").attributes)
 
         val lon = writer.addVariable(null, "lon", DataType.DOUBLE, newDimensions)
         lon.addAll(geodeticFile.findVariable("longitude_in").attributes)
-
-//        writer.addGroupAttribute(null, Attribute("Conventions", "CF-1.0"))
 
         // create the file
         try {
@@ -214,7 +254,7 @@ class Sentinel3Commands {
 
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
 
-        val ris = gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata 0")))
+        val ris = gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
         monitorFile("$prodName/lst_warp_rebuild.tif", 60000)
         lst.delete()
         ris.delete()
@@ -224,7 +264,7 @@ class Sentinel3Commands {
     @ShellMethod("Convert OGVI products")
 //    fun rebuildOGVI(prodName: String, shpFile: String) {
     fun rebuildOGVI(prodName: String, force: Boolean = false) {
-        if(!force && Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000) return
+        if (!force && Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000) return
 
         print(" * Converting $prodName... ")
         val ogviFile = NetcdfDataset.openDataset("$prodName/ogvi.nc")
@@ -248,7 +288,7 @@ class Sentinel3Commands {
         for (y in 0 until ogviData.shape[0])
             for (x in 0 until ogviData.shape[1])
                 when {
-                    !(x in 30..ogviData.shape[1]-30 || y in 30..ogviData.shape[0]-30) || ogviDataConv[y, x] > 200  -> ogviDataConv[y, x] = nodata.toFloat() // stay away from borders
+                    !(x in 30..ogviData.shape[1] - 30 || y in 30..ogviData.shape[0] - 30) || ogviDataConv[y, x] > 200 -> ogviDataConv[y, x] = nodata.toFloat() // stay away from borders
                     ogviData[y, x].isNaN() -> ogviDataConv[y, x] = nodata.toFloat() // no data
 //                    !(x in 30..ogviData.shape[1]-30 || y in 30..ogviData.shape[0]-30) -> ogviDataConv[y, x] = -32767 // stay away from borders
 //                    ogviData[y, x].isNaN() -> ogviDataConv[y, x] = -32767 // no data

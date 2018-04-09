@@ -9,6 +9,7 @@
 .project
 .settings
 .springBeans
+*.log
 
 ### IntelliJ IDEA ###
 .idea
