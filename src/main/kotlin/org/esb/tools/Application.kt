@@ -8,7 +8,14 @@ import org.springframework.boot.runApplication
 open class Application
 
 fun main(args: Array<String>) {
-    gdal.AllRegister()
-//    gdal.PushErrorHandler("CPLQuietErrorHandler")
-    runApplication<Application>(*args)
+    try {
+        gdal.AllRegister()
+        //    gdal.PushErrorHandler("CPLQuietErrorHandler")
+        runApplication<Application>(*args)
+    } catch (e: UnsatisfiedLinkError) {
+        println("Library path: \n\t - " + System.getProperty("java.library.path").replace(";", "\n\t - "))
+        error(" ${e.message}")
+    }
+
+
 }

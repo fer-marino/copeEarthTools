@@ -10,6 +10,7 @@ import org.gdal.gdal.WarpOptions
 import org.gdal.gdal.gdal
 import org.gdal.gdalconst.gdalconstConstants
 import org.gdal.osr.SpatialReference
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
@@ -30,6 +31,9 @@ import java.util.*
 @ShellComponent
 class Sentinel3Commands {
 
+    @Value("\${gdalTimeout:160000}")
+    private var timeout: Int = 160000
+
     @ShellMethod("Convert and merge multiple OCN products")
     fun lstMerge(pattern: String,
                  @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "",
@@ -39,6 +43,8 @@ class Sentinel3Commands {
             println(" * No product matches the pattern '$pattern'")
             return
         }
+
+        matches.first().file.parentFile
 
         val ascending = mutableListOf<String>()
         val descending = mutableListOf<String>()
@@ -101,17 +107,17 @@ class Sentinel3Commands {
         desc = gdal.Open("merged.vrt")
 
 
-        val da = gdal.Translate("ascending.tif", asc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
+        val da = gdal.Translate("${matches.first().file.parentFile}/ascending.tif", asc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
+        val dd = gdal.Translate("${matches.first().file.parentFile}/descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
 
-        monitorFile("ascending.tif", 160000)
-        monitorFile("descending.tif", 160000)
+        monitorFile("${matches.first().file.parentFile}/ascending.tif", timeout)
+        monitorFile("${matches.first().file.parentFile}/descending.tif", timeout)
 
-        gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
-        monitorFile("ascending-warp.tif", 190000)
+        gdal.Warp("${matches.first().file.parentFile}/ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
+        monitorFile("${matches.first().file.parentFile}/ascending-warp.tif", timeout)
 
-        gdal.Warp("descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
-        monitorFile("descending-warp.tif", 190000)
+        gdal.Warp("${matches.first().file.parentFile}/descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
+        monitorFile("${matches.first().file.parentFile}/descending-warp.tif", timeout)
 
         desc.delete()
         asc.delete()
@@ -164,9 +170,9 @@ class Sentinel3Commands {
             val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
             val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("-a_nodata 9.969209968386869E36")))
 //            val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("-ot Float32 -a_nodata -128.49803 -scale 0 255 0 1")))
-            monitorFile("descending.tif", 60000)
+            monitorFile("descending.tif", timeout)
             gdal.Warp("descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326 -tr 0.02 0.02 -crop_to_cutline -cutline $shpFile")))
-            monitorFile("descending-warp.tif", 90000)
+            monitorFile("descending-warp.tif", timeout)
             postprocess("descending-warp.tif", 1.0, 1)
             desc.delete()
         } catch (e: IOException) {
@@ -255,7 +261,7 @@ class Sentinel3Commands {
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
 
         val ris = gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/lst_warp_rebuild.tif", 60000)
+        monitorFile("$prodName/lst_warp_rebuild.tif", timeout)
         lst.delete()
         ris.delete()
         println("done")
@@ -354,7 +360,7 @@ class Sentinel3Commands {
         ogvi.SetMetadata(Hashtable(map), "GEOLOCATION")
 
         gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogvi), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
-        monitorFile("$prodName/ogvi_warp_rebuild.tif", 60000)
+        monitorFile("$prodName/ogvi_warp_rebuild.tif", timeout)
         ogvi.delete()
         println("done")
     }
@@ -371,7 +377,7 @@ class Sentinel3Commands {
         inds.GetRasterBand(1)
         gdal.FillNodata(inds.GetRasterBand(1), inds.GetRasterBand(1), maxSearchDistance, smothingIterations)
         gdal.DEMProcessing("color-$prod", inds, "color-relief", "color-table.txt", DEMProcessingOptions(gdal.ParseCommandLine("-alpha -co COMPRESS=JPEG")))
-        monitorFile("color-$prod", 200000)
+        monitorFile("color-$prod", timeout)
         println("done")
     }
 

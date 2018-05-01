@@ -15,17 +15,18 @@ class EsbPipeline {
     @Autowired lateinit var dhusCommands: DhusCommands
 
     @ShellMethod("Process sentinel 3 LST product")
-    fun sen3Lst(start: String, stop: String, @ShellOption(defaultValue = "false") force: Boolean) {
-        val startDate = LocalDateTime.parse(start, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-        val stopDate = LocalDateTime.parse(stop, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+    fun sen3Lst(year: Int, month: Int, @ShellOption(defaultValue = "false") force: Boolean) {
+
+        val startDate = LocalDateTime.of(year, month, 0, 0, 0)
+        val stopDate = LocalDateTime.of(year, month+1, 0, 0, 0)
 
         val filter = " ( beginPosition:[${DateTimeFormatter.ISO_INSTANT.format(startDate.toInstant(ZoneOffset.UTC))} TO ${DateTimeFormatter.ISO_INSTANT.format(stopDate.toInstant(ZoneOffset.UTC))}] " +
                 "AND endPosition:[${DateTimeFormatter.ISO_INSTANT.format(startDate.toInstant(ZoneOffset.UTC))} TO ${DateTimeFormatter.ISO_INSTANT.format(stopDate.toInstant(ZoneOffset.UTC))}] ) " +
                 "AND footprint:\"Intersects(POLYGON((3.6403226412286407 48.35007718040529,1.2672757662286553 35.18417665926795,22.009463266228643 34.53511194265073,23.943057016228636 47.821672583009956,3.6403226412286407 48.35007718040529,3.6403226412286407 48.35007718040529)))\" " +
                 "AND (platformname:Sentinel-3 AND producttype:SL_2_LST___ AND timeliness:\"Near Real Time\")  "
-        dhusCommands.searchOSearch("test", "test", filter, "IngestionDate desc", "S3${startDate.year}-${startDate.month}")
+        dhusCommands.searchOSearch("test", "test", filter, "IngestionDate desc", "S3$year-$month")
 
-        sentinel3Commands.lstMerge("S3${startDate.year}-${startDate.month}/S3*", "-projwin 6 47.5 20 35", force)
+        sentinel3Commands.lstMerge("S3$year-$month/S3*", "", force)
 
         sentinel3Commands.postprocess("ascending-warp.tif", 1.5, 1)
         sentinel3Commands.postprocess("descending-warp.tif", 1.5, 1)

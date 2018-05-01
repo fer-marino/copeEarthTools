@@ -1,7 +1,7 @@
 buildscript {
     ext {
-        kotlinVersion = '1.2.31'
-        springBootVersion = '2.0.0.RELEASE'
+        kotlinVersion = '1.2.41'
+        springBootVersion = '2.0.1.RELEASE'
         netcdfJavaVersion = '4.6.10'
     }
     repositories {
@@ -24,7 +24,7 @@ apply plugin: "application"
 apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
 
-String osName = "linux"
+String osName = "windows"
 
 group = 'org.earthstartsbeating'
 version = '0.0.1-SNAPSHOT'
