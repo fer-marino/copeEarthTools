@@ -30,9 +30,10 @@ import java.util.*
 @ShellComponent
 class Sentinel3Commands {
 
-    @ShellMethod("Convert and merge multiple OCN products")
+    @ShellMethod("Convert and merge multiple LST products")
     fun lstMerge(pattern: String,
-                 @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "",
+                 //@ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "",
+                 @ShellOption(defaultValue = "") outputOptions: String = "",
                  @ShellOption(defaultValue = "false") force: Boolean = false) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if (matches.isEmpty()) {
@@ -104,14 +105,14 @@ class Sentinel3Commands {
         val da = gdal.Translate("ascending.tif", asc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
         val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
 
-        monitorFile("ascending.tif", 160000)
-        monitorFile("descending.tif", 160000)
+        monitorFile("ascending.tif", 1600000)
+        monitorFile("descending.tif", 1600000)
 
         gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
-        monitorFile("ascending-warp.tif", 190000)
+        monitorFile("ascending-warp.tif", 1900000)
 
         gdal.Warp("descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
-        monitorFile("descending-warp.tif", 190000)
+        monitorFile("descending-warp.tif", 1900000)
 
         desc.delete()
         asc.delete()
@@ -122,58 +123,152 @@ class Sentinel3Commands {
         println(" done in ${System.currentTimeMillis() - start} msec")
     }
 
-    @ShellMethod("Convert and merge multiple OGVI products")
-//    fun ogviMerge(pattern: String, @ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "") {
-//    fun ogviMerge(pattern: String, outputOptions: String = "", shpFile: String) {
-    fun ogviMerge(pattern: String, shpFile: String, @ShellOption(defaultValue = "") outputOptions: String = "") {
-
+    @ShellMethod("Convert and merge multiple OLCI L2 products")
+    fun olciMerge(pattern: String,
+                  @ShellOption(defaultValue = "") outputOptions: String = "",
+                  @ShellOption(defaultValue = "false") force: Boolean = false) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if (matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
             return
         }
 
-        val ascending = mutableListOf<String>()
-        val descending = mutableListOf<String>()
+        //val ascending = mutableListOf<String>()
+        val descendingOGVI = mutableListOf<String>()
+        val descendingIWV = mutableListOf<String>()
+        val descendingOTCI = mutableListOf<String>()
 
         matches.filter { it.isFile }.forEach {
-            rebuildOGVI(it.file.absolutePath)
-            if (Utils.isAscending(it.file.absolutePath))
-                ascending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
-            else
-                descending.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
+            rebuildOLCI(it.file.absolutePath, force)
+//            if (Utils.isAscending(it.file.absolutePath))
+//                //ascending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
+//            else
+//            descendingOGVI.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
+//            descendingIWV.add(it.file.absolutePath + "/iwv_warp_rebuild.tif")
+//            descendingOTCI.add(it.file.absolutePath + "/otci_warp_rebuild.tif")
+            descendingOGVI.add(it.file.absolutePath + "/ogvi_lzw_rebuild.tif")
+            descendingIWV.add(it.file.absolutePath + "/iwv_lzw_rebuild.tif")
+            descendingOTCI.add(it.file.absolutePath + "/otci_lzw_rebuild.tif")
         }
 
-        ascending.sort()
-        descending.sort()
+        //ascending.sort()
+        descendingOGVI.sort()
+        descendingIWV.sort()
+        descendingOTCI.sort()
+
         print(" * Merging...")
+        val start = System.currentTimeMillis()
+        //Files.deleteIfExists(Paths.get("mergea"))
+        Files.deleteIfExists(Paths.get("merged"))
+        //var asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
+//        var descOGVI = gdal.BuildVRT("merged", Vector(descendingOGVI), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
+//        var descOTCI = gdal.BuildVRT("merged", Vector(descendingOTCI), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
+//        var descIWV = gdal.BuildVRT("merged", Vector(descendingIWV), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
 
-//        try {
-//            val asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
-//            val da = gdal.Translate("ascending.tif", asc, TranslateOptions(gdal.ParseCommandLine(outputOptions)))
-//            monitorFile("ascending.tif", 60000)
-//            gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326  -crop_to_cutline -cutline  $shpFile")))
-//            monitorFile("ascending-warp.tif", 90000)
-//            postprocess("ascending-warp.tif", 1.0, 1)
-//            asc.delete()
-//        } catch (e: IOException) {
-//            print("ERROR merging ascending: ${e.message}")
-//        }
+        var descOGVI = gdal.BuildVRT("merged", Vector(descendingOGVI), BuildVRTOptions(gdal.ParseCommandLine("")))
+        var descOTCI = gdal.BuildVRT("merged", Vector(descendingOTCI), BuildVRTOptions(gdal.ParseCommandLine("")))
+        var descIWV = gdal.BuildVRT("merged", Vector(descendingIWV), BuildVRTOptions(gdal.ParseCommandLine("")))
 
-        try {
-            val desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
-            val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("-a_nodata 9.969209968386869E36")))
-//            val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("-ot Float32 -a_nodata -128.49803 -scale 0 255 0 1")))
-            monitorFile("descending.tif", 60000)
-            gdal.Warp("descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-co COMPRESS=LZW -s_srs EPSG:4326 -tr 0.02 0.02 -crop_to_cutline -cutline $shpFile")))
-            monitorFile("descending-warp.tif", 90000)
-            postprocess("descending-warp.tif", 1.0, 1)
-            desc.delete()
-        } catch (e: IOException) {
-            print("ERROR merging descending: ${e.message}")
+        gdal.Translate("merged_ogvi.vrt", descOGVI, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
+        gdal.Translate("merged_otci.vrt", descOTCI, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
+        gdal.Translate("merged_iwv.vrt", descIWV, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
+
+        var t = Files.readAllLines(Paths.get("merged_ogvi.vrt"))
+        for(i in 0..t.size) {
+            if(t[i].contains("<VRTRasterBand")) {
+                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
+                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i+4, "import numpy as np")
+                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
+                t.add(i+7, "]]>")
+                t.add(i+8, "    </PixelFunctionCode>")
+            }
         }
+        Files.write(Paths.get("merged_ogvi.vrt"), t)
 
-        println("done")
+        t = Files.readAllLines(Paths.get("merged_otci.vrt"))
+        for(i in 0..t.size) {
+            if(t[i].contains("<VRTRasterBand")) {
+                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
+                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i+4, "import numpy as np")
+                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
+                t.add(i+7, "]]>")
+                t.add(i+8, "    </PixelFunctionCode>")
+            }
+        }
+        Files.write(Paths.get("merged_otci.vrt"), t)
+
+        t = Files.readAllLines(Paths.get("merged_iwv.vrt"))
+        for(i in 0..t.size) {
+            if(t[i].contains("<VRTRasterBand")) {
+                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
+                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i+4, "import numpy as np")
+                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
+                t.add(i+7, "]]>")
+                t.add(i+8, "    </PixelFunctionCode>")
+            }
+        }
+        Files.write(Paths.get("merged_iwv.vrt"), t)
+
+        descOGVI.delete()
+        descOTCI.delete()
+        descIWV.delete()
+
+        descOGVI = gdal.Open("merged_ogvi.vrt")
+        descOTCI = gdal.Open("merged_otci.vrt")
+        descIWV = gdal.Open("merged_iwv.vrt")
+
+        /* MOSAIC */
+        val ddOGVI = gdal.Translate("descending_ogvi.tif", descOGVI, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
+        monitorFile("descending_ogvi.tif", 1600000)
+
+        val ddOTCI = gdal.Translate("descending_otci.tif", descOTCI, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
+        monitorFile("descending_otci.tif", 1600000)
+
+        val ddIWVI = gdal.Translate("descending_iwv.tif", descIWV, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
+        monitorFile("descending_iwv.tif", 1600000)
+
+        /* COMPRESSION */
+        val commandOGVI = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 descending_ogvi.tif descending_ogvi_lzw.tif"
+        Runtime.getRuntime().exec(commandOGVI)
+
+        val commandOTCI = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 descending_otci.tif descending_otci_lzw.tif"
+        Runtime.getRuntime().exec(commandOTCI)
+
+        val commandIWV = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 descending_iwv.tif descending_iwv_lzw.tif"
+        Runtime.getRuntime().exec(commandIWV)
+
+//        gdal.Translate("descending_ogvi-warp.tif", ddOGVI, TranslateOptions(gdal.ParseCommandLine(" -co COMPRESS=LZW -a_srs EPSG:4326 ")))
+//        monitorFile("descending_ogvi-warp.tif", 190000)
+//
+//        gdal.Translate("descending_otci-warp.tif", descOTCI, TranslateOptions(gdal.ParseCommandLine(" -co COMPRESS=LZW -a_srs EPSG:4326 ")))
+//        monitorFile("descending_otci-warp.tif", 190000)
+//
+//        gdal.Translate("descending_iwv-warp.tif", descIWV, TranslateOptions(gdal.ParseCommandLine(" -co COMPRESS=LZW -a_srs EPSG:4326 ")))
+//        monitorFile("descending_iwv-warp.tif", 190000)
+
+//        gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
+//        monitorFile("ascending-warp.tif", 1900000)
+//
+//        gdal.Warp("descending-warp.tif", arrayOf(ddOGVI), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
+//        monitorFile("descending-warp.tif", 1900000)
+
+        descOGVI.delete()
+        descOTCI.delete()
+        descIWV.delete()
+
+        println(" done in ${System.currentTimeMillis() - start} msec")
     }
 
     @ShellMethod("Convert LST products")
@@ -255,108 +350,221 @@ class Sentinel3Commands {
         lst.SetMetadata(Hashtable(map), "GEOLOCATION")
 
         val ris = gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/lst_warp_rebuild.tif", 60000)
+        monitorFile("$prodName/lst_warp_rebuild.tif", 600000)
         lst.delete()
         ris.delete()
         println("done")
     }
 
     @ShellMethod("Convert OGVI products")
-//    fun rebuildOGVI(prodName: String, shpFile: String) {
-    fun rebuildOGVI(prodName: String, force: Boolean = false) {
-        if (!force && Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000) return
-
+//    fun rebuildOLCI(prodName: String, shpFile: String) {
+    fun rebuildOLCI(prodName: String, force: Boolean = false) {
+      if (!force
+                && Files.exists(Paths.get(prodName, "ogvi_lzw_rebuild.tif"))
+                && Files.size(Paths.get(prodName, "ogvi_lzw_rebuild.tif")) > 50000
+                && Files.exists(Paths.get(prodName, "otci_lzw_rebuild.tif"))
+                && Files.size(Paths.get(prodName, "otci_lzw_rebuild.tif")) > 50000
+               && Files.exists(Paths.get(prodName, "iwv_lzw_rebuild.tif"))
+                && Files.size(Paths.get(prodName, "iwv_lzw_rebuild.tif")) > 50000
+                ) return
+//        if (!force
+//                && Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif"))
+//                && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000
+//                && Files.exists(Paths.get(prodName, "otci_warp_rebuild.tif"))
+//                && Files.size(Paths.get(prodName, "otci_warp_rebuild.tif")) > 50000
+//                && Files.exists(Paths.get(prodName, "iwv_warp_rebuild.tif"))
+//                && Files.size(Paths.get(prodName, "iwv_warp_rebuild.tif")) > 50000
+//                ) return
         print(" * Converting $prodName... ")
         val ogviFile = NetcdfDataset.openDataset("$prodName/ogvi.nc")
+        val otciFile = NetcdfDataset.openDataset("$prodName/otci.nc")
+        val iwvFile = NetcdfDataset.openDataset("$prodName/iwv.nc")
+
         val geodeticFile = NetcdfDataset.openDataset("$prodName/geo_coordinates.nc")
-//        val flags = NetcdfDataset.openDataset("$prodName/flags_in.nc")
 
         val ogviData = ogviFile.findVariable("OGVI").read() as ArrayFloat.D2
+        val otciData = otciFile.findVariable("OTCI").read() as ArrayFloat.D2
+        val iwvData = iwvFile.findVariable("IWV").read() as ArrayFloat.D2
+
         val latData = geodeticFile.findVariable("latitude").read() as ArrayDouble.D2
         val lonData = geodeticFile.findVariable("longitude").read() as ArrayDouble.D2
-//        val confidenceIn = flags.findVariable("confidence_in").read() as ArrayShort.D2
-
-        val shape = ogviData.shape
-
-        // convert float to short
-//        val ogviDataConv = ArrayShort.D2(shape[0], shape[1])
-        val ogviDataConv = ArrayFloat.D2(shape[0], shape[1])
-
-//        var cloud = 0
-
-        val nodata = 200
-        for (y in 0 until ogviData.shape[0])
-            for (x in 0 until ogviData.shape[1])
-                when {
-                    !(x in 30..ogviData.shape[1] - 30 || y in 30..ogviData.shape[0] - 30) || ogviDataConv[y, x] > 200 -> ogviDataConv[y, x] = nodata.toFloat() // stay away from borders
-                    ogviData[y, x].isNaN() -> ogviDataConv[y, x] = nodata.toFloat() // no data
-//                    !(x in 30..ogviData.shape[1]-30 || y in 30..ogviData.shape[0]-30) -> ogviDataConv[y, x] = -32767 // stay away from borders
-//                    ogviData[y, x].isNaN() -> ogviDataConv[y, x] = -32767 // no data
-//                    DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384 -> {
-//                        ogviDataConv[y, x] = 0//-32767
-//                        cloud++
-//                    }
-//                    else -> ogviDataConv[y, x] = (ogviData[y, x]*255).toShort()
-                    else -> ogviDataConv[y, x] = ogviData[y, x].toFloat()
-                }
-
-//        print("cloudy pixels ${(cloud.toDouble() / (shape[0] * shape[1])*100).format(2)}%... ")
 
         val dimensions = ogviFile.findVariable("OGVI").dimensions
 
-        val writer = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted.nc")
+        val writerOGVI = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_ogvi.nc")
+        val writerOTCI = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_otci.nc")
+        val writerIWV = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_iwv.nc")
 
-        val newDimensions = mutableListOf<Dimension>(
-                writer.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writer.addDimension(null, dimensions[1].fullName, dimensions[1].length)
+        val newDimensionsOGVI = mutableListOf<Dimension>(
+                writerOGVI.addDimension(null, dimensions[0].fullName, dimensions[0].length),
+                writerOGVI.addDimension(null, dimensions[1].fullName, dimensions[1].length)
+        )
+
+        val newDimensionsOTCI = mutableListOf<Dimension>(
+                writerOTCI.addDimension(null, dimensions[0].fullName, dimensions[0].length),
+                writerOTCI.addDimension(null, dimensions[1].fullName, dimensions[1].length)
+        )
+
+        val newDimensionsIWV = mutableListOf<Dimension>(
+                writerIWV.addDimension(null, dimensions[0].fullName, dimensions[0].length),
+                writerIWV.addDimension(null, dimensions[1].fullName, dimensions[1].length)
         )
 
         // populate
-//        val ogvin = writer.addVariable(null, "olci_global_vegetation_index", DataType.SHORT, newDimensions)
-        val ogvin = writer.addVariable(null, "olci_global_vegetation_index", DataType.FLOAT, newDimensions)
-        ogvin.addAll(ogviFile.findVariable("OGVI").attributes)
+        val ogvi = writerOGVI.addVariable(null, "vegetation_index", DataType.FLOAT, newDimensionsOGVI)
+        val otci = writerOTCI.addVariable(null, "chlorophyll_index", DataType.FLOAT, newDimensionsOTCI)
+        val iwv = writerIWV.addVariable(null, "integrated_water_vapour", DataType.FLOAT, newDimensionsIWV)
 
-        val lat = writer.addVariable(null, "lat", DataType.DOUBLE, newDimensions)
-        lat.addAll(geodeticFile.findVariable("latitude").attributes)
+        ogvi.addAll(ogviFile.findVariable("OGVI").attributes)
+//        ogvi.addAttribute(Attribute("valid_range", "0, 1"))
+        ogvi.addAttribute(Attribute("_FillValue", "nan"))
 
-        val lon = writer.addVariable(null, "lon", DataType.DOUBLE, newDimensions)
-        lon.addAll(geodeticFile.findVariable("longitude").attributes)
+        otci.addAll(otciFile.findVariable("OTCI").attributes)
+//        ogvi.addAttribute(Attribute("valid_range", "0, 1"))
+        otci.addAttribute(Attribute("_FillValue", "nan"))
 
-//        writer.addGroupAttribute(null, Attribute("Conventions", "CF-1.0"))
+        iwv.addAll(iwvFile.findVariable("IWV").attributes)
+//        ogvi.addAttribute(Attribute("valid_range", "0, 1"))
+        iwv.addAttribute(Attribute("_FillValue", "nan"))
+
+        val latOGVI = writerOGVI.addVariable(null, "lat", DataType.DOUBLE, newDimensionsOGVI)
+        latOGVI.addAll(geodeticFile.findVariable("latitude").attributes)
+
+        val lonOGVI = writerOGVI.addVariable(null, "lon", DataType.DOUBLE, newDimensionsOGVI)
+        lonOGVI.addAll(geodeticFile.findVariable("longitude").attributes)
 
         // create the file
         try {
-            writer.create()
-            writer.write(ogvin, ogviData)
-//            writer.write(ogvin, ogviDataConv)
-            writer.write(lat, latData)
-            writer.write(lon, lonData)
+            writerOGVI.create()
+            writerOGVI.write(ogvi, ogviData)
+            writerOGVI.write(latOGVI, latData)
+            writerOGVI.write(lonOGVI, lonData)
         } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted.nc: ${e.message}")
+            print("ERROR creating file $prodName/reformatted_ogvi.nc: ${e.message}")
         }
 
-        writer.close()
+        val latOTCI = writerOTCI.addVariable(null, "lat", DataType.DOUBLE, newDimensionsOTCI)
+        latOTCI.addAll(geodeticFile.findVariable("latitude").attributes)
+
+        val lonOTCI = writerOTCI.addVariable(null, "lon", DataType.DOUBLE, newDimensionsOTCI)
+        lonOTCI.addAll(geodeticFile.findVariable("longitude").attributes)
+
+        try {
+            writerOTCI.create()
+            writerOTCI.write(otci, otciData)
+            writerOTCI.write(latOTCI, latData)
+            writerOTCI.write(lonOTCI, lonData)
+        } catch (e: IOException) {
+            print("ERROR creating file $prodName/reformatted_otci.nc: ${e.message}")
+        }
+
+        val latIWV = writerIWV.addVariable(null, "lat", DataType.DOUBLE, newDimensionsIWV)
+        latIWV.addAll(geodeticFile.findVariable("latitude").attributes)
+
+        val lonIWV = writerIWV.addVariable(null, "lon", DataType.DOUBLE, newDimensionsIWV)
+        lonIWV.addAll(geodeticFile.findVariable("longitude").attributes)
+
+        try {
+            writerIWV.create()
+            writerIWV.write(iwv, iwvData)
+            writerIWV.write(latIWV, latData)
+            writerIWV.write(lonIWV, lonData)
+        } catch (e: IOException) {
+            print("ERROR creating file $prodName/reformatted_iwv.nc: ${e.message}")
+        }
+
+        writerOGVI.close()
         ogviFile.close()
+        writerOTCI.close()
+        otciFile.close()
+        writerIWV.close()
+        iwvFile.close()
         geodeticFile.close()
-//        flags.close()
 
         val wgs84 = SpatialReference()
         wgs84.ImportFromEPSG(4326)
 
-        val ogvi = gdal.Open("NETCDF:$prodName/reformatted.nc:olci_global_vegetation_index")
-        val map = mapOf(
+        val ogviDTS = gdal.Open("NETCDF:$prodName/reformatted_ogvi.nc:vegetation_index")
+        val otciDTS = gdal.Open("NETCDF:$prodName/reformatted_otci.nc:chlorophyll_index")
+        val iwvDTS = gdal.Open("NETCDF:$prodName/reformatted_iwv.nc:integrated_water_vapour")
+
+        val mapOGVI = mapOf(
                 "LINE_OFFSET" to "1", "LINE_STEP" to "1",
                 "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
-                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted.nc:lon",
-                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted.nc:lat"
+                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted_ogvi.nc:lon",
+                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted_ogvi.nc:lat"
         )
 
-        ogvi.SetMetadata(Hashtable(map), "GEOLOCATION")
+        val mapOTCI = mapOf(
+                "LINE_OFFSET" to "1", "LINE_STEP" to "1",
+                "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
+                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted_otci.nc:lon",
+                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted_otci.nc:lat"
+        )
 
-        gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogvi), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW")))
+        val mapIWV = mapOf(
+                "LINE_OFFSET" to "1", "LINE_STEP" to "1",
+                "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
+                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted_iwv.nc:lon",
+                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted_iwv.nc:lat"
+        )
+
+        ogviDTS.SetMetadata(Hashtable(mapOGVI), "GEOLOCATION")
+        otciDTS.SetMetadata(Hashtable(mapOTCI), "GEOLOCATION")
+        iwvDTS.SetMetadata(Hashtable(mapIWV), "GEOLOCATION")
+
+        val risOGVI = gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogviDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
+//        val risOGVI = gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogviDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -srcnodata 0 -dstnodata nan")))
         monitorFile("$prodName/ogvi_warp_rebuild.tif", 60000)
-        ogvi.delete()
+
+        val risOTCI = gdal.Warp("$prodName/otci_warp_rebuild.tif", arrayOf(otciDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
+        monitorFile("$prodName/otci_warp_rebuild.tif", 60000)
+
+        val risIWV = gdal.Warp("$prodName/iwv_warp_rebuild.tif", arrayOf(iwvDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
+        monitorFile("$prodName/iwv_warp_rebuild.tif", 60000)
+
+        var commandOGVI = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/ogvi_warp_rebuild.tif $prodName/ogvi_lzw_rebuild.tif"
+        println(commandOGVI)
+        Runtime.getRuntime().exec(commandOGVI)
+
+        var commandOTCI = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/otci_warp_rebuild.tif $prodName/otci_lzw_rebuild.tif"
+        println(commandOTCI)
+        Runtime.getRuntime().exec(commandOTCI)
+
+        var commandIWV = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/iwv_warp_rebuild.tif $prodName/iwv_lzw_rebuild.tif"
+        println(commandIWV)
+        Runtime.getRuntime().exec(commandIWV)
+
+        ogviDTS.delete()
+        risOGVI.delete()
+
+        otciDTS.delete()
+        risOTCI.delete()
+
+        iwvDTS.delete()
+        risIWV.delete()
+
+        var delete ="rm -rf $prodName/reformatted_otci.nc"
+        println(delete)
+        Runtime.getRuntime().exec(delete)
+        delete ="rm -rf $prodName/reformatted_ogvi.nc"
+        println(delete)
+        Runtime.getRuntime().exec(delete)
+        delete ="rm -rf $prodName/reformatted_iwv.nc"
+        println(delete)
+        Runtime.getRuntime().exec(delete)
+        delete ="rm -rf $prodName/otci_warp_rebuild.tif"
+        println(delete)
+        Runtime.getRuntime().exec(delete)
+        delete ="rm -rf $prodName/ogvi_warp_rebuild.tif"
+        println(delete)
+        Runtime.getRuntime().exec(delete)
+        delete ="rm -rf $prodName/iwv_warp_rebuild.tif"
+        println(delete)
+        Runtime.getRuntime().exec(delete)
+
         println("done")
+
     }
 
     @ShellMethod("gdal info")
@@ -371,7 +579,7 @@ class Sentinel3Commands {
         inds.GetRasterBand(1)
         gdal.FillNodata(inds.GetRasterBand(1), inds.GetRasterBand(1), maxSearchDistance, smothingIterations)
         gdal.DEMProcessing("color-$prod", inds, "color-relief", "color-table.txt", DEMProcessingOptions(gdal.ParseCommandLine("-alpha -co COMPRESS=JPEG")))
-        monitorFile("color-$prod", 200000)
+        monitorFile("color-$prod", 2000000)
         println("done")
     }
 
