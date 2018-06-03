@@ -10,7 +10,8 @@ open class Application
 fun main(args: Array<String>) {
     try {
         gdal.AllRegister()
-        //    gdal.PushErrorHandler("CPLQuietErrorHandler")
+        println(" Loaded ${gdal.GetDriverCount()} GDAL drivers")
+//        gdal.PushErrorHandler("CPLQuietErrorHandler")
         runApplication<Application>(*args)
     } catch (e: UnsatisfiedLinkError) {
         println("Library path: \n\t - " + System.getProperty("java.library.path").replace(";", "\n\t - "))

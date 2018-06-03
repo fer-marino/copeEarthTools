@@ -27,6 +27,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.util.*
+import java.util.concurrent.*
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
 
 @ShellComponent
@@ -36,8 +39,7 @@ class DhusCommands {
 
     @Bean
     fun myPromptProvider(): PromptProvider = PromptProvider {
-        AttributedString("shell:>",
-                AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
+        AttributedString("shell:>", AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
     }
 
     @Value("\${dhus.url:https://scihub.copernicus.eu/s3}")
@@ -45,15 +47,19 @@ class DhusCommands {
 
     @ShellMethod("Query Copernicus open hub on Open Sarch API and download all the results")
     fun searchOSearch(
-        @ShellOption(defaultValue = "test") username: String,
-        @ShellOption(defaultValue = "test") password: String,
-        @ShellOption(defaultValue = "producttype:SL_2_LST___ AND timeliness:\"Near Real Time\"") filter: String,
-        @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
-        @ShellOption(defaultValue = "download") destination: String
+            @ShellOption(defaultValue = "test") username: String,
+            @ShellOption(defaultValue = "test") password: String,
+            @ShellOption(defaultValue = "producttype:SL_2_LST___ AND timeliness:\"Near Real Time\"") filter: String,
+            @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
+            @ShellOption(defaultValue = "download") destination: String
     ): List<String> {
         var skip = 0
         val pageSize = 100
         val out = mutableListOf<String>()
+        var totalProduct = 0
+
+        val downloader = Downloader(2)
+        val hub = DataHub(dhusUrl, dhusUrl, username, password)
 
         val tpl = restTemplateBuilder.basicAuthorization(username, password).build()
         try {
@@ -63,11 +69,16 @@ class DhusCommands {
                 headers.accept = listOf(MediaType.APPLICATION_JSON)
                 val entity = HttpEntity("parameters", headers)
                 val query = "$dhusUrl/search?start=$skip&rows=$pageSize&orderby=$orderBy&format=json&q=$filter"
-                println(" * Running query $query")
+                if (skip == 0)
+                    println(" * Running query $query")
+                else if (skip < totalProduct)
+                    println(" * Requesting page ${skip / pageSize + 1} of ${totalProduct / pageSize + 1}")
                 val response = tpl.exchange(query, HttpMethod.GET, entity, Map::class.java)
                 val feed = response.body["feed"] as Map<String, Any>
 
-                println(" * Returned ${feed["opensearch:totalResults"]} products in ${System.currentTimeMillis() - start}msec")
+                if (skip == 0)
+                    println(" * Returned ${feed["opensearch:totalResults"]} products in ${System.currentTimeMillis() - start}msec")
+                totalProduct = feed["opensearch:totalResults"].toString().toInt()
                 var skipCount = 0
                 if (feed.containsKey("entry")) {
                     for (entry in feed["entry"] as List<Map<String, Any>>) {
@@ -76,8 +87,7 @@ class DhusCommands {
                                 println(" * Skipped $skipCount products as already downloaded")
                                 skipCount = 0
                             }
-                            downloadProduct(entry["id"].toString(), entry["title"].toString(), username, password, destination)
-                            unzip(entry["title"].toString(), destination, destination)
+                            downloader.download(Product(entry["id"].toString(), entry["title"].toString(), destination, 0, hub))
                         } else
                             skipCount++
 
@@ -95,20 +105,25 @@ class DhusCommands {
             println(e.responseBodyAsString)
         }
 
+        while (downloader.isActive()) Thread.sleep(2000)
+
         return out
     }
 
     @ShellMethod("Query Copernicus open hub on ODATA API and download all the results")
     fun searchOdata(
-        @ShellOption(defaultValue = "test") username: String,
-        @ShellOption(defaultValue = "test") password: String,
-        @ShellOption(defaultValue = "substringof('SR_2_LAN', Name)") filter: String,
-        @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
-        @ShellOption(defaultValue = "download") destination: String
+            @ShellOption(defaultValue = "test") username: String,
+            @ShellOption(defaultValue = "test") password: String,
+            @ShellOption(defaultValue = "substringof('SR_2_LAN', Name)") filter: String,
+            @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
+            @ShellOption(defaultValue = "download") destination: String
     ): List<String> {
         var skip = 0
         val pageSize = 100
         val out = mutableListOf<String>()
+
+        val downloader = Downloader(2)
+        val hub = DataHub(dhusUrl, dhusUrl, username, password)
 
         val tpl = restTemplateBuilder.basicAuthorization(username, password).build()
 
@@ -131,8 +146,9 @@ class DhusCommands {
                             println(" * Skipped $skipCount products as already downloaded")
                             skipCount = 0
                         }
-                        downloadProduct(entry.id, entry.name, username, password, destination)
-                        unzip(entry.name, destination, destination)
+                        downloader.download(Product(entry.id, entry.name, destination, 0, hub))
+//                        downloadProduct(entry.id, entry.name, username, password, destination)
+//                        unzip(entry.name, destination, destination)
                     } else
                         skipCount++
                     out.add(entry.name)
@@ -202,16 +218,132 @@ class DhusCommands {
 
         println(" done")
     }
+
+    data class DataHub(val id: String, val url: String, val username: String, val password: String)
+
+    data class Product(val id: String, val name: String, val destination: String, var size: Long?, val hub: DataHub)
+
+    class Downloader(val threads: Int = 1) {
+        private val queue = LinkedBlockingQueue<Product>()
+        private val activeDownloads = LinkedBlockingQueue<Download>()
+
+        fun isActive() = queue.size > 0 || activeDownloads.size > 0
+
+        fun download(product: Product) {
+            queue.add(product)
+        }
+
+        init {
+            Thread {
+                while (true) {
+                    activeDownloads.removeIf { !it.isActive() }
+
+                    if (activeDownloads.size < threads) {
+                        val toDownload = queue.poll()
+
+                        if (toDownload != null) {
+                            val newDownload = Download(toDownload)
+                            activeDownloads.offer(newDownload)
+                            newDownload.download()
+                        }
+                    }
+
+                    Thread.sleep(1000)
+                }
+            }.start()
+
+            // status update
+            Thread {
+                var sleep = false
+                while (true) {
+                    sleep = false
+                    activeDownloads.forEachIndexed { i, it ->
+                        print("\r * [${queue.size} ${i + 1}] $it")
+                        Thread.sleep(1500)
+                        sleep = true
+                    }
+
+                    if (!sleep)
+                        Thread.sleep(2000)
+                }
+            }.start()
+        }
+    }
+
+    class Download(private val product: Product) {
+        private var stream: CountingInputStream
+        private var prevSize = 0L
+        private var completed = false
+
+        init {
+            try {
+                val uc: HttpURLConnection = URL("${product.hub.url}/odata/v1/Products('${product.id}')/\$value").openConnection() as HttpURLConnection
+                val basicAuth = "Basic " + Base64Utils.encodeToString("${product.hub.username}:${product.hub.password}".toByteArray())
+                uc.setRequestProperty("Authorization", basicAuth)
+                stream = CountingInputStream(uc.inputStream)
+                product.size = uc.contentLengthLong
+            } catch (e: Exception) {
+                println("Error while establishing download connection for product ${product.name}: ${e.message}")
+                stream = CountingInputStream(null)
+                completed = true
+            }
+        }
+
+        override fun toString(): String {
+            val out = "Downloading ${product.name} of size ${Utils.readableFileSize(product.size!!)}: " +
+                    "${Math.round(stream.byteCount * 1000f / product.size!!) / 10f}% (${Utils.readableFileSize(stream.byteCount - prevSize)}/sec)"
+            prevSize = stream.byteCount
+            return out
+        }
+
+        fun download() {
+            Thread {
+                try {
+                    val start = System.currentTimeMillis()
+                    FileUtils.copyInputStreamToFile(stream, Paths.get(product.destination, "${product.name}.zip").toFile())
+
+                    val buffer = ByteArray(1024)
+                    val zis = ZipInputStream(FileInputStream("${product.destination}/${product.name}.zip"))
+                    var zipEntry = zis.nextEntry
+                    while (zipEntry != null) {
+                        if (zipEntry.isDirectory && !Files.exists(Paths.get("${product.destination}/${zipEntry.name}"))) {
+                            Files.createDirectories(Paths.get("${product.destination}/${zipEntry.name}"))
+                        } else {
+                            val fos = FileOutputStream(File("${product.destination}/${zipEntry.name}"))
+                            var len: Int = zis.read(buffer)
+                            while (len > 0) {
+                                fos.write(buffer, 0, len)
+                                len = zis.read(buffer)
+                            }
+                            fos.close()
+                        }
+                        zipEntry = zis.nextEntry
+                    }
+                    zis.closeEntry()
+                    zis.close()
+
+                    Files.delete(Paths.get("${product.destination}/${product.name}.zip"))
+                    println("\t ** Download of ${product.name} successfully completed in ${(System.currentTimeMillis() - start) / 1000} seconds")
+                } catch (e: Exception) {
+                    println("An error occurred during download of ${product.name}: ${e.message}")
+                } finally {
+                    completed = true
+                }
+            }.start()
+        }
+
+        fun isActive() = !completed
+    }
 }
 
 // Classes used to deserialize json answer from ODATA
 data class ODataEntry(
-    @JsonAlias("Id")
-    var id: String,
-    @JsonAlias("Name")
-    var name: String,
-    @JsonAlias("IngestionDate")
-    var ingestionDate: String?
+        @JsonAlias("Id")
+        var id: String,
+        @JsonAlias("Name")
+        var name: String,
+        @JsonAlias("IngestionDate")
+        var ingestionDate: String?
 )
 
 data class ODataRoot(var d: ODataResults)

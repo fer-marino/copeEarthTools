@@ -61,10 +61,10 @@ dependencies {
     // GEO
     compile 'com.esri.geometry:esri-geometry-api:2.0.0'
     compile "edu.ucar:cdm:${netcdfJavaVersion}"
-    if(osName.contains("windows"))
-        compile files("C:\\Program Files\\GDAL\\java\\gdal.jar")
-    else
-        compile 'org.gdal:gdal:2.2.0'
+//    if(osName.contains("windows"))
+//        compile files("C:\\Program Files\\GDAL\\java\\gdal.jar")
+//    else
+    compile 'org.gdal:gdal:2.3.0'
 
     // utils
     compile 'commons-io:commons-io:2.6'

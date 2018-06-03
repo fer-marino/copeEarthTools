@@ -1,3 +1,3 @@
 logging.level.root: error
 dhus.url: "https://scihub.copernicus.eu/s3"
-gdalTimeout: 160000         # msec
+gdalTimeout: 16000000         # msec

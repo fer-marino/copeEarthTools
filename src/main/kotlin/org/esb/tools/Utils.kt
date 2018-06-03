@@ -29,7 +29,7 @@ class Utils {
             val f = Paths.get(file)
             val start = System.currentTimeMillis()
             while (true) {
-                if(System.currentTimeMillis() - start > timeout) {
+                if (System.currentTimeMillis() - start > timeout) {
                     println("Timeout reached")
                     break
                 }

@@ -32,13 +32,13 @@ class Sentinel1Commands {
                 .map { prod -> ocnToAsciiGrid(prod.file.absolutePath, volatile = true) }
                 .forEach { uList.add(it.first); vList.add(it.second) }
 
-        var t = gdal.BuildVRT("merge", uList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-resolution average")) )
-        gdal.Translate("U10.asc", t, TranslateOptions( gdal.ParseCommandLine("-of AAIGrid -co force_cellsize=true $outputOptions") ) )
+        var t = gdal.BuildVRT("merge", uList.toTypedArray(), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
+        gdal.Translate("U10.asc", t, TranslateOptions(gdal.ParseCommandLine("-of AAIGrid -co force_cellsize=true $outputOptions")))
         uList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
         t.delete()
 
-        t = gdal.BuildVRT("merge", vList.toTypedArray(), BuildVRTOptions( gdal.ParseCommandLine("-r cubicspline -resolution average")) )
-        gdal.Translate("V10.asc", t, TranslateOptions( gdal.ParseCommandLine("-of AAIGrid -co force_cellsize=true $outputOptions") ) )
+        t = gdal.BuildVRT("merge", vList.toTypedArray(), BuildVRTOptions(gdal.ParseCommandLine("-r cubicspline -resolution average")))
+        gdal.Translate("V10.asc", t, TranslateOptions(gdal.ParseCommandLine("-of AAIGrid -co force_cellsize=true $outputOptions")))
         vList.forEach { it.delete(); it.GetFileList().forEach { Files.deleteIfExists(Paths.get(it.toString())) } }
         t.delete()
         println(" * done")
@@ -52,8 +52,10 @@ class Sentinel1Commands {
             return
         }
 
-        val uListA = mutableListOf<Dataset>(); val uListD = mutableListOf<Dataset>()
-        val vListA = mutableListOf<Dataset>(); val vListD = mutableListOf<Dataset>()
+        val uListA = mutableListOf<Dataset>()
+        val uListD = mutableListOf<Dataset>()
+        val vListA = mutableListOf<Dataset>()
+        val vListD = mutableListOf<Dataset>()
         matches.filter { it.isFile }.forEach {
             val t = ocnToAsciiGrid(it.file.absolutePath, volatile = false)
             if (Utils.isAscending(it.file.absolutePath)) {
@@ -95,9 +97,9 @@ class Sentinel1Commands {
 
     @ShellMethod("Convert OCN files to ASCII Grid")
     fun ocnToAsciiGrid(
-        prodName: String,
-        @ShellOption(defaultValue = "AAIGrid") outputFormat: String = "GTiff",
-        @ShellOption(defaultValue = "false") volatile: Boolean = false
+            prodName: String,
+            @ShellOption(defaultValue = "AAIGrid") outputFormat: String = "GTiff",
+            @ShellOption(defaultValue = "false") volatile: Boolean = false
     ): Pair<Dataset, Dataset> {
         println(" * Converting $prodName...")
         val wgs84 = SpatialReference()
