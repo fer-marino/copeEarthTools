@@ -24,7 +24,7 @@ apply plugin: "application"
 apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
 
-String osName = "windows"
+String osName = "linux"
 
 group = 'org.earthstartsbeating'
 version = '0.0.1-SNAPSHOT'
