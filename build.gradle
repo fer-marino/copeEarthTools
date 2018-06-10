@@ -7,24 +7,25 @@ buildscript {
     repositories {
         mavenCentral()
         jcenter()
-        maven { url "https://repo.spring.io/snapshot" }
+//        maven { url "https://repo.spring.io/snapshot" }
         maven { url "https://repo.spring.io/milestone" }
+        maven { url 'http://repo.spring.io/plugins-release' }
     }
     dependencies {
         classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}")
         classpath("org.jetbrains.kotlin:kotlin-allopen:${kotlinVersion}")
+        classpath 'io.spring.gradle:propdeps-plugin:0.0.9.RELEASE'
     }
 }
 
 apply plugin: 'kotlin'
+apply plugin: 'kotlin-kapt'
 apply plugin: 'kotlin-spring'
 apply plugin: 'idea'
 apply plugin: "application"
 apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
-
-String osName = "linux"
 
 group = 'org.earthstartsbeating'
 version = '0.0.1-SNAPSHOT'
@@ -32,13 +33,17 @@ sourceCompatibility = 1.8
 mainClassName = 'org.esb.tools.ApplicationKt'
 
 compileKotlin {
-    kotlinOptions.jvmTarget = "1.8"
-
+    kotlinOptions {
+        freeCompilerArgs = ["-Xjsr305=strict"]
+        jvmTarget = "1.8"
+    }
 }
 compileTestKotlin {
-    kotlinOptions.jvmTarget = "1.8"
+    kotlinOptions {
+        freeCompilerArgs = ["-Xjsr305=strict"]
+        jvmTarget = "1.8"
+    }
 }
-
 repositories {
     mavenCentral()
     maven { url 'https://repo.spring.io/libs-milestone' }
@@ -53,6 +58,9 @@ dependencies {
     compile 'org.springframework.shell:spring-shell-starter:2.0.0.RELEASE'
     runtime 'org.springframework.boot:spring-boot-devtools'
 
+    kapt "org.springframework.boot:spring-boot-configuration-processor"
+//    optional "org.springframework.boot:spring-boot-configuration-processor"
+
     // kotlin
     compile "com.fasterxml.jackson.module:jackson-module-kotlin"
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:${kotlinVersion}"
@@ -61,9 +69,6 @@ dependencies {
     // GEO
     compile 'com.esri.geometry:esri-geometry-api:2.0.0'
     compile "edu.ucar:cdm:${netcdfJavaVersion}"
-//    if(osName.contains("windows"))
-//        compile files("C:\\Program Files\\GDAL\\java\\gdal.jar")
-//    else
     compile 'org.gdal:gdal:2.3.0'
 
     // utils

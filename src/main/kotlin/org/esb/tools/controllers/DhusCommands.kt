@@ -4,6 +4,9 @@ import com.fasterxml.jackson.annotation.JsonAlias
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.input.CountingInputStream
 import org.esb.tools.Utils
+import org.esb.tools.configuration.DataHubConfiguration
+import org.esb.tools.model.DataHub
+import org.esb.tools.model.Product
 import org.jline.utils.AttributedString
 import org.jline.utils.AttributedStyle
 import org.springframework.beans.factory.annotation.Autowired
@@ -31,37 +34,59 @@ import java.util.*
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
+import javax.annotation.PostConstruct
+import kotlin.properties.Delegates
 
 @ShellComponent
 class DhusCommands {
     @Autowired
     lateinit var restTemplateBuilder: RestTemplateBuilder
+    @Autowired
+    lateinit var dataHubConfiguration: DataHubConfiguration
+    private var selectedHub: DataHub? = null
 
     @Bean
     fun myPromptProvider(): PromptProvider = PromptProvider {
-        AttributedString("shell:>", AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
+        AttributedString("esb:>", AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
     }
 
     @Value("\${dhus.url:https://scihub.copernicus.eu/s3}")
     private lateinit var dhusUrl: String
 
+    @ShellMethod("Change selected DataHub instance")
+    fun selectHub(id: String) {
+        val hub = dataHubConfiguration.hubs.find { it.id == id }
+        if (hub != null)
+            selectedHub = hub
+        else
+            println(" ** DataHub with id $id not found. Available hubs are ${dataHubConfiguration.hubs.map { it.id }.reduceRight { s, acc -> (if (s == selectedHub?.id) "\\e[1m$s\\e[21m" else s) + ", $acc" }} ")
+    }
+
+    @ShellMethod("Shows available data hubs")
+    fun listDataHubs() {
+        println(" ** Available hubs are ${dataHubConfiguration.hubs.map { it.id }.reduceRight { s, acc -> (if (s == selectedHub?.id) "[$s]" else s) + ", $acc" }} ")
+    }
+
     @ShellMethod("Query Copernicus open hub on Open Sarch API and download all the results")
     fun searchOSearch(
-            @ShellOption(defaultValue = "test") username: String,
-            @ShellOption(defaultValue = "test") password: String,
             @ShellOption(defaultValue = "producttype:SL_2_LST___ AND timeliness:\"Near Real Time\"") filter: String,
             @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
-            @ShellOption(defaultValue = "download") destination: String
+            @ShellOption(defaultValue = "") destination: String
     ): List<String> {
+        if(selectedHub == null) {
+            println(" **** No hub selected. Select an hub first")
+            return listOf()
+        }
+
         var skip = 0
         val pageSize = 100
         val out = mutableListOf<String>()
         var totalProduct = 0
 
         val downloader = Downloader(2)
-        val hub = DataHub(dhusUrl, dhusUrl, username, password)
+        val hub = selectedHub!!
 
-        val tpl = restTemplateBuilder.basicAuthorization(username, password).build()
+        val tpl = restTemplateBuilder.basicAuthorization(hub.username, hub.password).build()
         try {
             do {
                 val start = System.currentTimeMillis()
@@ -74,7 +99,7 @@ class DhusCommands {
                 else if (skip < totalProduct)
                     println(" * Requesting page ${skip / pageSize + 1} of ${totalProduct / pageSize + 1}")
                 val response = tpl.exchange(query, HttpMethod.GET, entity, Map::class.java)
-                val feed = response.body["feed"] as Map<String, Any>
+                val feed = response.body!!["feed"] as Map<String, Any>
 
                 if (skip == 0)
                     println(" * Returned ${feed["opensearch:totalResults"]} products in ${System.currentTimeMillis() - start}msec")
@@ -87,7 +112,10 @@ class DhusCommands {
                                 println(" * Skipped $skipCount products as already downloaded")
                                 skipCount = 0
                             }
-                            downloader.download(Product(entry["id"].toString(), entry["title"].toString(), destination, 0, hub))
+                            if (destination.isNotEmpty())
+                                downloader.download(Product(entry["id"].toString(), entry["title"].toString(), destination, 0, hub))
+                            else
+                                println(" ** ${entry["title"]}")
                         } else
                             skipCount++
 
@@ -118,6 +146,11 @@ class DhusCommands {
             @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
             @ShellOption(defaultValue = "download") destination: String
     ): List<String> {
+        if(selectedHub == null) {
+            println(" **** No hub selected. Select an hub first")
+            return listOf()
+        }
+
         var skip = 0
         val pageSize = 100
         val out = mutableListOf<String>()
@@ -138,9 +171,9 @@ class DhusCommands {
                 println(" * Running query $query")
                 val response = tpl.exchange(query, HttpMethod.GET, entity, ODataRoot::class.java)
 
-                println(" * Total products ${response.body.d.results.size} in ${System.currentTimeMillis() - start}msec")
+                println(" * Total products ${response.body!!.d.results.size} in ${System.currentTimeMillis() - start}msec")
                 var skipCount = 0
-                for (entry in response.body.d.results) {
+                for (entry in response.body!!.d.results) {
                     if (!Files.exists(Paths.get(destination, entry.name + ".SEN3"))) {
                         if (skipCount != 0) {
                             println(" * Skipped $skipCount products as already downloaded")
@@ -157,7 +190,7 @@ class DhusCommands {
                 if (skipCount != 0) println(" * Skipped $skipCount products as already downloaded")
 
                 skip += pageSize
-            } while (response.body.d.results.size == pageSize)
+            } while (response.body!!.d.results.size == pageSize)
         } catch (e: HttpStatusCodeException) {
             println("HTTP Error (${e.statusCode}): ${e.message}")
             println(e.responseBodyAsString)
@@ -218,10 +251,6 @@ class DhusCommands {
 
         println(" done")
     }
-
-    data class DataHub(val id: String, val url: String, val username: String, val password: String)
-
-    data class Product(val id: String, val name: String, val destination: String, var size: Long?, val hub: DataHub)
 
     class Downloader(val threads: Int = 1) {
         private val queue = LinkedBlockingQueue<Product>()
