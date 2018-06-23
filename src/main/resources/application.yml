@@ -1,3 +1,20 @@
-logging.level.root: error
-dhus.url: "https://scihub.copernicus.eu/s3"
-gdalTimeout: 160000         # msec
+#logging.level.root: error
+
+datahub:
+  hubs:
+    - id: "s3_preops"
+      url: "https://scihub.copernicus.eu/s3"
+      username: "s3guest"
+      password: "s3guest"
+#      parallelDownloads: 3
+    - id: "dias"
+      url: "http://early.onda-dias.eu/catalogue/"
+      username: "earlyadopter1"
+      password: "Qz5T6ufYjJgbq27C"
+#      parallelDownloads: 5
+    - id: "scihub"
+      url: "https://scihub.copernicus.eu/dhus"
+      username: "test"
+      password: "test"
+#      parallelDownloads: 5
+  proxyUrl: "none"
