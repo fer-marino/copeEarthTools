@@ -1,38 +1,36 @@
 package org.esb.tools.controllers
 
-import org.esb.tools.Utils
 import org.esb.tools.Utils.Companion.monitorFile
-import org.gdal.gdal.BuildVRTOptions
-import org.gdal.gdal.DEMProcessingOptions
-import org.gdal.gdal.InfoOptions
-import org.gdal.gdal.TranslateOptions
-import org.gdal.gdal.WarpOptions
-import org.gdal.gdal.gdal
+import org.gdal.gdal.*
 import org.gdal.gdalconst.gdalconstConstants
 import org.gdal.osr.SpatialReference
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
 import org.springframework.shell.standard.ShellOption
-import ucar.ma2.ArrayDouble
-import ucar.ma2.ArrayFloat
-import ucar.ma2.ArrayShort
-import ucar.ma2.DataType
+import ucar.ma2.*
 import ucar.nc2.Attribute
 import ucar.nc2.Dimension
 import ucar.nc2.NetcdfFileWriter
+import ucar.nc2.Variable
 import ucar.nc2.dataset.NetcdfDataset
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
+import java.io.File
+import java.time.Clock
 
 @ShellComponent
 class Sentinel3Commands {
 
-    @ShellMethod("Convert and merge multiple LST products")
+    @Value("\${gdalTimeout:16000000}")
+    private var timeout: Int = 16000000
+
+    @ShellMethod("Converte and merge multiple LST products")
     fun lstMerge(pattern: String,
-                 //@ShellOption(defaultValue = "-projwin 5 50 24 35") outputOptions: String = "",
+                 //@ShellOption(defaultValue = " ") outputOptions: String = "",
                  @ShellOption(defaultValue = "") outputOptions: String = "",
                  @ShellOption(defaultValue = "false") force: Boolean = false) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
@@ -46,10 +44,8 @@ class Sentinel3Commands {
 
         matches.filter { it.isFile }.forEach {
             rebuildLST(it.file.absolutePath, force)
-            if (Utils.isAscending(it.file.absolutePath))
-                ascending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
-            else
-                descending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
+            ascending.add(it.file.absolutePath + "/ascending.tif")
+            descending.add(it.file.absolutePath + "/descending.tif")
         }
 
         ascending.sort()
@@ -65,36 +61,36 @@ class Sentinel3Commands {
         gdal.Translate("merged.vrt", desc, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
 
         var t = Files.readAllLines(Paths.get("mergea.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
+        for (i in 0..t.size) {
+            if (t[i].contains("<VRTRasterBand")) {
                 t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
+                t.add(i + 1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i + 2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i + 3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i + 4, "import numpy as np")
+                t.add(i + 5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i + 6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), out = out_ar)")
+                t.add(i + 7, "]]>")
+                t.add(i + 8, "    </PixelFunctionCode>")
             }
         }
-        Files.write(Paths.get("mergea.vrt"), t)
+//        Files.write(Paths.get("mergea.vrt"), t)
 
         t = Files.readAllLines(Paths.get("merged.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
+        for (i in 0..t.size) {
+            if (t[i].contains("<VRTRasterBand")) {
                 t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
+                t.add(i + 1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i + 2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i + 3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i + 4, "import numpy as np")
+                t.add(i + 5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i + 6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), out = out_ar)")
+                t.add(i + 7, "]]>")
+                t.add(i + 8, "    </PixelFunctionCode>")
             }
         }
-        Files.write(Paths.get("merged.vrt"), t)
+//        Files.write(Paths.get("merged.vrt"), t)
 
         asc.delete()
         desc.delete()
@@ -102,17 +98,113 @@ class Sentinel3Commands {
         desc = gdal.Open("merged.vrt")
 
 
-        val da = gdal.Translate("ascending.tif", asc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
+        val da = gdal.Translate("ascending.tif", asc, TranslateOptions(gdal.ParseCommandLine(outputOptions)))
+        val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine(outputOptions)))
 
-        monitorFile("ascending.tif", 1600000)
-        monitorFile("descending.tif", 1600000)
+        gdal.Warp("${matches.first().file.parentFile}/ascending-warp.tif", arrayOf(da),
+                WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:3857 -wo NUM_THREADS=3"))).delete()
 
-        gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
-        monitorFile("ascending-warp.tif", 1900000)
+        gdal.Warp("${matches.first().file.parentFile}/descending-warp.tif", arrayOf(dd),
+                WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:3857 -wo NUM_THREADS=3"))).delete()
 
-        gdal.Warp("descending-warp.tif", arrayOf(dd), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
-        monitorFile("descending-warp.tif", 1900000)
+        da.delete()
+        dd.delete()
+
+        desc.delete()
+        asc.delete()
+
+        desc.delete()
+        asc.delete()
+
+        println(" done in ${System.currentTimeMillis() - start} msec")
+    }
+
+    @ShellMethod("Converte and merge multiple SST products")
+    fun sstMerge(pattern: String,
+            //@ShellOption(defaultValue = " ") outputOptions: String = "",
+                 @ShellOption(defaultValue = "") outputOptions: String = "",
+                 @ShellOption(defaultValue = "false") force: Boolean = false) {
+        val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
+        if (matches.isEmpty()) {
+            println(" * No product matches the pattern '$pattern'")
+            return
+        }
+
+        val ascending = mutableListOf<String>()
+        val descending = mutableListOf<String>()
+
+        matches.filter { it.isFile }.forEach {
+            rebuildSST(it.file.absolutePath, force)
+            ascending.add(it.file.absolutePath + "/ascending.tif")
+            descending.add(it.file.absolutePath + "/descending.tif")
+        }
+
+        ascending.sort()
+        descending.sort()
+        print(" * Merging...")
+        val start = System.currentTimeMillis()
+        Files.deleteIfExists(Paths.get("mergea"))
+        Files.deleteIfExists(Paths.get("merged"))
+        var asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
+        var desc = gdal.BuildVRT("merged", Vector(descending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
+
+        gdal.Translate("mergea.vrt", asc, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
+        gdal.Translate("merged.vrt", desc, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
+
+        var t = Files.readAllLines(Paths.get("mergea.vrt"))
+        for (i in 0..t.size) {
+            if (t[i].contains("<VRTRasterBand")) {
+                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
+                t.add(i + 1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i + 2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i + 3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i + 4, "import numpy as np")
+                t.add(i + 5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i + 6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), out = out_ar)")
+                t.add(i + 7, "]]>")
+                t.add(i + 8, "    </PixelFunctionCode>")
+            }
+        }
+//        Files.write(Paths.get("mergea.vrt"), t)
+
+        t = Files.readAllLines(Paths.get("merged.vrt"))
+        for (i in 0..t.size) {
+            if (t[i].contains("<VRTRasterBand")) {
+                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
+                t.add(i + 1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i + 2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i + 3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i + 4, "import numpy as np")
+                t.add(i + 5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i + 6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), out = out_ar)")
+                t.add(i + 7, "]]>")
+                t.add(i + 8, "    </PixelFunctionCode>")
+            }
+        }
+//        Files.write(Paths.get("merged.vrt"), t)
+
+        asc.delete()
+        desc.delete()
+        asc = gdal.Open("mergea.vrt")
+        desc = gdal.Open("merged.vrt")
+
+
+        val da = gdal.Translate("ascending.tif", asc, TranslateOptions(gdal.ParseCommandLine(outputOptions)))
+        val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine(outputOptions)))
+
+//        gdal.Warp("${matches.first().file.parentFile}/ascending-warp.tif", arrayOf(da),
+//                WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:3857 -wo NUM_THREADS=3"))).delete()
+//
+//        gdal.Warp("${matches.first().file.parentFile}/descending-warp.tif", arrayOf(dd),
+//                WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:3857 -wo NUM_THREADS=3"))).delete()
+
+        val commanddesc = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending.tif descending_sst_lzw.tif"
+        Runtime.getRuntime().exec(commanddesc)
+        val commandasc = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  ascending.tif descending_sst_lzw.tif"
+        Runtime.getRuntime().exec(commandasc)
+
+        da.delete()
+        dd.delete()
 
         desc.delete()
         asc.delete()
@@ -133,7 +225,7 @@ class Sentinel3Commands {
             return
         }
 
-        //val ascending = mutableListOf<String>()
+
         val descendingCHL = mutableListOf<String>()
         val descendingTSM = mutableListOf<String>()
         val descendingKD9 = mutableListOf<String>()
@@ -146,12 +238,6 @@ class Sentinel3Commands {
 
         matches.filter { it.isFile }.forEach {
             rebuildOLCIMarine(it.file.absolutePath, force)
-//            if (Utils.isAscending(it.file.absolutePath))
-//                //ascending.add(it.file.absolutePath + "/lst_warp_rebuild.tif")
-//            else
-//            descendingOGVI.add(it.file.absolutePath + "/ogvi_warp_rebuild.tif")
-//            descendingIWV.add(it.file.absolutePath + "/iwv_warp_rebuild.tif")
-//            descendingOTCI.add(it.file.absolutePath + "/otci_warp_rebuild.tif")
             descendingCHL.add(it.file.absolutePath + "/chl_lzw_rebuild.tif")
             descendingTSM.add(it.file.absolutePath + "/tsm_lzw_rebuild.tif")
             descendingKD9.add(it.file.absolutePath + "/kd9_lzw_rebuild.tif")
@@ -160,7 +246,6 @@ class Sentinel3Commands {
             descendingCHN.add(it.file.absolutePath + "/chn_lzw_rebuild.tif")
             descendingADG.add(it.file.absolutePath + "/adg_lzw_rebuild.tif")
             descendingPAR.add(it.file.absolutePath + "/par_lzw_rebuild.tif")
-            descendingIWV.add(it.file.absolutePath + "/iww_lzw_rebuild.tif")
         }
 
         descendingCHL.sort()
@@ -171,26 +256,28 @@ class Sentinel3Commands {
         descendingCHN.sort()
         descendingADG.sort()
         descendingPAR.sort()
-        descendingIWV.sort()
 
         print(" * Merging...")
         val start = System.currentTimeMillis()
-        //Files.deleteIfExists(Paths.get("mergea"))
-        Files.deleteIfExists(Paths.get("merged"))
-        //var asc = gdal.BuildVRT("mergea", Vector(ascending), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
-//        var descOGVI = gdal.BuildVRT("merged", Vector(descendingOGVI), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
-//        var descOTCI = gdal.BuildVRT("merged", Vector(descendingOTCI), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
-//        var descIWV = gdal.BuildVRT("merged", Vector(descendingIWV), BuildVRTOptions(gdal.ParseCommandLine("-resolution average")))
 
-        var descCHL = gdal.BuildVRT("merged", Vector(descendingCHL), BuildVRTOptions(gdal.ParseCommandLine("")))
-        var descTSM = gdal.BuildVRT("merged", Vector(descendingKD9), BuildVRTOptions(gdal.ParseCommandLine("")))
-        var descKD9 = gdal.BuildVRT("merged", Vector(descendingTSM), BuildVRTOptions(gdal.ParseCommandLine("")))
-        var descT86 = gdal.BuildVRT("merged", Vector(descendingCHL), BuildVRTOptions(gdal.ParseCommandLine("")))
-        var descA86 = gdal.BuildVRT("merged", Vector(descendingKD9), BuildVRTOptions(gdal.ParseCommandLine("")))
-        var descCHN = gdal.BuildVRT("merged", Vector(descendingTSM), BuildVRTOptions(gdal.ParseCommandLine("")))
-        var descADG = gdal.BuildVRT("merged", Vector(descendingCHL), BuildVRTOptions(gdal.ParseCommandLine("")))
-        var descPAR = gdal.BuildVRT("merged", Vector(descendingKD9), BuildVRTOptions(gdal.ParseCommandLine("")))
-        var descIWV = gdal.BuildVRT("merged", Vector(descendingTSM), BuildVRTOptions(gdal.ParseCommandLine("")))
+        Files.deleteIfExists(Paths.get("merged_chl"))
+        Files.deleteIfExists(Paths.get("merged_tsm"))
+        Files.deleteIfExists(Paths.get("merged_kd9"))
+        Files.deleteIfExists(Paths.get("merged_a86"))
+        Files.deleteIfExists(Paths.get("merged_t86"))
+        Files.deleteIfExists(Paths.get("merged_chn"))
+        Files.deleteIfExists(Paths.get("merged_adg"))
+        Files.deleteIfExists(Paths.get("merged_par"))
+
+        /* Build VRT*/
+        var descCHL = gdal.BuildVRT("merged_chl", Vector(descendingCHL), BuildVRTOptions(gdal.ParseCommandLine("")))
+        var descTSM = gdal.BuildVRT("merged_tsm", Vector(descendingTSM), BuildVRTOptions(gdal.ParseCommandLine("")))
+        var descKD9 = gdal.BuildVRT("merged_kd9", Vector(descendingKD9), BuildVRTOptions(gdal.ParseCommandLine("")))
+        var descT86 = gdal.BuildVRT("merged_t86", Vector(descendingT86), BuildVRTOptions(gdal.ParseCommandLine("")))
+        var descA86 = gdal.BuildVRT("merged_a86", Vector(descendingA86), BuildVRTOptions(gdal.ParseCommandLine("")))
+        var descCHN = gdal.BuildVRT("merged_chn", Vector(descendingCHN), BuildVRTOptions(gdal.ParseCommandLine("")))
+        var descADG = gdal.BuildVRT("merged_adg", Vector(descendingADG), BuildVRTOptions(gdal.ParseCommandLine("")))
+        var descPAR = gdal.BuildVRT("merged_par", Vector(descendingPAR), BuildVRTOptions(gdal.ParseCommandLine("")))
 
         gdal.Translate("merged_chl.vrt", descCHL, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
         gdal.Translate("merged_tsm.vrt", descTSM, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
@@ -200,151 +287,18 @@ class Sentinel3Commands {
         gdal.Translate("merged_chn.vrt", descCHN, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
         gdal.Translate("merged_adg.vrt", descADG, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
         gdal.Translate("merged_par.vrt", descPAR, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
-        gdal.Translate("merged_iww.vrt", descIWV, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
 
-        var t = Files.readAllLines(Paths.get("merged_chl.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
-                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
-            }
-        }
-        Files.write(Paths.get("merged_chl.vrt"), t)
+        val pyLog = "np.round_(np.log10(np.nanmean(np.power(10,in_ar,dtype = 'float32'), axis = 0, dtype = 'float32'),dtype = 'float32'), decimals=5, out = out_ar)"
+        val pyLin = "np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)"
 
-        t = Files.readAllLines(Paths.get("merged_tsm.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
-                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
-            }
-        }
-        Files.write(Paths.get("merged_tsm.vrt"), t)
-
-        t = Files.readAllLines(Paths.get("merged_kd9.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
-                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
-            }
-        }
-        Files.write(Paths.get("merged_kd9.vrt"), t)
-
-        t = Files.readAllLines(Paths.get("merged_t86.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
-                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
-            }
-        }
-        Files.write(Paths.get("merged_t86.vrt"), t)
-
-        t = Files.readAllLines(Paths.get("merged_a86.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
-                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
-            }
-        }
-        Files.write(Paths.get("merged_a86.vrt"), t)
-
-        t = Files.readAllLines(Paths.get("merged_chn.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
-                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
-            }
-        }
-        Files.write(Paths.get("merged_chn.vrt"), t)
-
-        t = Files.readAllLines(Paths.get("merged_adg.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
-                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
-            }
-        }
-        Files.write(Paths.get("merged_adg.vrt"), t)
-
-        t = Files.readAllLines(Paths.get("merged_par.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
-                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
-            }
-        }
-        Files.write(Paths.get("merged_par.vrt"), t)
-
-        t = Files.readAllLines(Paths.get("merged_iww.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
-                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
-            }
-        }
-        Files.write(Paths.get("merged_iww.vrt"), t)
+        createVRT("chl",pyLog)
+        createVRT("tsm",pyLog)
+        createVRT("kd9",pyLog)
+        createVRT("t86",pyLin)
+        createVRT("a86",pyLin)
+        createVRT("chn",pyLog)
+        createVRT("adg",pyLog)
+        createVRT("par",pyLin)
 
         descCHL.delete()
         descTSM.delete()
@@ -354,7 +308,6 @@ class Sentinel3Commands {
         descCHN.delete()
         descADG.delete()
         descPAR.delete()
-        descIWV.delete()
 
         descCHL = gdal.Open("merged_chl.vrt")
         descTSM = gdal.Open("merged_tsm.vrt")
@@ -364,78 +317,37 @@ class Sentinel3Commands {
         descCHN = gdal.Open("merged_chn.vrt")
         descADG = gdal.Open("merged_adg.vrt")
         descPAR = gdal.Open("merged_par.vrt")
-        descIWV = gdal.Open("merged_iww.vrt")
 
         /* MOSAIC */
         val ddCHL = gdal.Translate("descending_chl.tif", descCHL, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_chl.tif", 1600000)
-
         val ddTSM = gdal.Translate("descending_tsm.tif", descTSM, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_tsm.tif", 1600000)
-
         val ddKD9 = gdal.Translate("descending_kd9.tif", descKD9, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_kd9.tif", 1600000)
-
         val ddT86 = gdal.Translate("descending_t86.tif", descT86, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_t86.tif", 1600000)
-
         val ddA86 = gdal.Translate("descending_a86.tif", descA86, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_a86.tif", 1600000)
-
         val ddCHN = gdal.Translate("descending_chn.tif", descCHN, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_chn.tif", 1600000)
-
         val ddADG = gdal.Translate("descending_adg.tif", descADG, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_adg.tif", 1600000)
-
         val ddPAR = gdal.Translate("descending_par.tif", descPAR, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_par.tif", 1600000)
-
-        val ddIWV = gdal.Translate("descending_iww.tif", descIWV, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_iww.tif", 1600000)
 
         /* COMPRESSION */
         val commandCHL = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_chl.tif descending_chl_lzw.tif"
         Runtime.getRuntime().exec(commandCHL)
-
         val commandTSM = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_tsm.tif descending_tsm_lzw.tif"
         Runtime.getRuntime().exec(commandTSM)
-
         val commandKD9 = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_kd9.tif descending_kd9_lzw.tif"
         Runtime.getRuntime().exec(commandKD9)
-
         val commandT86 = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_t86.tif descending_t86_lzw.tif"
         Runtime.getRuntime().exec(commandT86)
-
         val commandA86 = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_a86.tif descending_a86_lzw.tif"
         Runtime.getRuntime().exec(commandA86)
-
         val commandCHN = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_chn.tif descending_chn_lzw.tif"
         Runtime.getRuntime().exec(commandCHN)
-
         val commandADG = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_adg.tif descending_adg_lzw.tif"
         Runtime.getRuntime().exec(commandADG)
-
         val commandPAR = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_par.tif descending_par_lzw.tif"
         Runtime.getRuntime().exec(commandPAR)
 
-        val commandIWV = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_iww.tif descending_iww_lzw.tif"
-        Runtime.getRuntime().exec(commandIWV)
+        /*GDAL WARP resampling*/
 
-//        gdal.Translate("descending_ogvi-warp.tif", ddOGVI, TranslateOptions(gdal.ParseCommandLine(" -co COMPRESS=LZW -a_srs EPSG:4326 ")))
-//        monitorFile("descending_ogvi-warp.tif", 190000)
-//
-//        gdal.Translate("descending_otci-warp.tif", descOTCI, TranslateOptions(gdal.ParseCommandLine(" -co COMPRESS=LZW -a_srs EPSG:4326 ")))
-//        monitorFile("descending_otci-warp.tif", 190000)
-//
-//        gdal.Translate("descending_iwv-warp.tif", descIWV, TranslateOptions(gdal.ParseCommandLine(" -co COMPRESS=LZW -a_srs EPSG:4326 ")))
-//        monitorFile("descending_iwv-warp.tif", 190000)
-
-//        gdal.Warp("ascending-warp.tif", arrayOf(da), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
-//        monitorFile("ascending-warp.tif", 1900000)
-//
-//        gdal.Warp("descending-warp.tif", arrayOf(ddOGVI), WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3")))
-//        monitorFile("descending-warp.tif", 1900000)
 
         descCHL.delete()
         descTSM.delete()
@@ -445,7 +357,6 @@ class Sentinel3Commands {
         descCHN.delete()
         descADG.delete()
         descPAR.delete()
-        descIWV.delete()
 
         println(" done in ${System.currentTimeMillis() - start} msec")
     }
@@ -558,13 +469,13 @@ class Sentinel3Commands {
 
         /* MOSAIC */
         val ddOGVI = gdal.Translate("descending_ogvi.tif", descOGVI, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_ogvi.tif", 1600000)
+//        monitorFile("descending_ogvi.tif", 1600000)
 
         val ddOTCI = gdal.Translate("descending_otci.tif", descOTCI, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_otci.tif", 1600000)
+//        monitorFile("descending_otci.tif", 1600000)
 
         val ddIWVI = gdal.Translate("descending_iwv.tif", descIWV, TranslateOptions(gdal.ParseCommandLine("$outputOptions")))
-        monitorFile("descending_iwv.tif", 1600000)
+//        monitorFile("descending_iwv.tif", 1600000)
 
         /* COMPRESSION */
         val commandOGVI = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 -projwin -179.9 89.9 179.9 -89.9  descending_ogvi.tif descending_ogvi_lzw.tif"
@@ -600,9 +511,14 @@ class Sentinel3Commands {
 
     @ShellMethod("Convert LST products")
     fun rebuildLST(prodName: String, force: Boolean = false) {
-        if (!force && Files.exists(Paths.get(prodName, "lst_warp_rebuild.tif")) && Files.size(Paths.get(prodName, "lst_warp_rebuild.tif")) > 50000) return
+        if (!force && Files.exists(Paths.get(prodName, "ascending.tif")) && Files.size(Paths.get(prodName, "ascending.tif")) > 50000) return
 
         print(" * Converting $prodName... ")
+        Files.deleteIfExists(Paths.get("$prodName/reformatted_ascending.nc"))
+        Files.deleteIfExists(Paths.get("$prodName/reformatted_descending.nc"))
+        Files.deleteIfExists(Paths.get("$prodName/ascending.tif"))
+        Files.deleteIfExists(Paths.get("$prodName/descending.tif"))
+
         val lstFile = NetcdfDataset.openDataset("$prodName/LST_in.nc")
         val geodeticFile = NetcdfDataset.openDataset("$prodName/geodetic_in.nc")
         val flags = NetcdfDataset.openDataset("$prodName/flags_in.nc")
@@ -612,16 +528,28 @@ class Sentinel3Commands {
         val lonData = geodeticFile.findVariable("longitude_in").read() as ArrayDouble.D2
         val confidenceIn = flags.findVariable("confidence_in").read() as ArrayShort.D2
 
+
         val shape = lstData.shape
+        val lstAscending = ArrayFloat.D2(shape[0], shape[1])
+        val lstDescending = ArrayFloat.D2(shape[0], shape[1])
 
         var cloud = 0
         for (y in 0 until lstData.shape[0])
             for (x in 0 until lstData.shape[1])
                 when {
-                    !(x in 30..lstData.shape[1] - 30 || y in 30..lstData.shape[0] - 30) -> lstData[y, x] = Float.NaN  // stay away from borders
                     DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384 -> {
                         lstData[y, x] = Float.NaN
                         cloud++
+                    }
+                    !(x in 30..lstData.shape[1] - 30 || y in 30..lstData.shape[0] - 30) -> lstData[y, x] = Float.NaN  // stay away from borders
+                    else -> {
+                        if(latData[y, x] > 85 || latData[y, x] < -85) {
+                            lstAscending[y, x] = lstData[y, x]
+                            lstDescending[y, x] = lstData[y, x]
+                        } else if(latData[y, x] - latData[Math.max(0, y - 2), x] >= 0)
+                            lstAscending[y, x] = lstData[y, x]      // ascending
+                        else if(latData[y, x] - latData[Math.max(0, y - 2), x] <= 0 )
+                            lstDescending[y, x] = lstData[y, x]    // descending
                     }
                 }
 
@@ -629,61 +557,263 @@ class Sentinel3Commands {
 
         val dimensions = lstFile.findVariable("LST").dimensions
 
-        val writer = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted.nc")
+        val writerAscending = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_ascending.nc")
+        val writerDescending = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_descending.nc")
 
-        val newDimensions = mutableListOf<Dimension>(
-                writer.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writer.addDimension(null, dimensions[1].fullName, dimensions[1].length)
+        val dimensionAscending = mutableListOf<Dimension>(
+                writerAscending.addDimension(null, dimensions[0].fullName, dimensions[0].length),
+                writerAscending.addDimension(null, dimensions[1].fullName, dimensions[1].length)
+        )
+        val dimensionDescending = mutableListOf<Dimension>(
+                writerDescending.addDimension(null, dimensions[0].fullName, dimensions[0].length),
+                writerDescending.addDimension(null, dimensions[1].fullName, dimensions[1].length)
         )
 
         // populate
-        val lstn = writer.addVariable(null, "surface_temperature", DataType.FLOAT, newDimensions)
-        lstn.addAll(lstFile.findVariable("LST").attributes)
-        lstn.addAttribute(Attribute("valid_range", "200, 350"))
-        lstn.addAttribute(Attribute("_FillValue", "nan"))
+        val lstAscVar = writerAscending.addVariable(null, "surface_temperature", DataType.FLOAT, dimensionAscending)
+        lstAscVar.addAll(lstFile.findVariable("LST").attributes)
+        lstAscVar.addAttribute(Attribute("valid_range", "200, 350"))
+        lstAscVar.addAttribute(Attribute("_FillValue", "nan"))
 
-        val lat = writer.addVariable(null, "lat", DataType.DOUBLE, newDimensions)
-        lat.addAll(geodeticFile.findVariable("latitude_in").attributes)
+        val lstDescVar = writerDescending.addVariable(null, "surface_temperature", DataType.FLOAT, dimensionDescending)
+        lstDescVar.addAll(lstFile.findVariable("LST").attributes)
+        lstDescVar.addAttribute(Attribute("valid_range", "200, 350"))
+        lstDescVar.addAttribute(Attribute("_FillValue", "nan"))
 
-        val lon = writer.addVariable(null, "lon", DataType.DOUBLE, newDimensions)
-        lon.addAll(geodeticFile.findVariable("longitude_in").attributes)
+        val latAVar = writerAscending.addVariable(null, "lat", DataType.DOUBLE, dimensionAscending)
+        latAVar.addAll(geodeticFile.findVariable("latitude_in").attributes)
+
+        val latDVar = writerDescending.addVariable(null, "lat", DataType.DOUBLE, dimensionDescending)
+        latDVar.addAll(geodeticFile.findVariable("latitude_in").attributes)
+
+        val lonAVar = writerAscending.addVariable(null, "lon", DataType.DOUBLE, dimensionAscending)
+        lonAVar.addAll(geodeticFile.findVariable("longitude_in").attributes)
+
+        val lonDVar = writerDescending.addVariable(null, "lon", DataType.DOUBLE, dimensionDescending)
+        lonDVar.addAll(geodeticFile.findVariable("longitude_in").attributes)
 
         // create the file
         try {
-            writer.create()
-            writer.write(lstn, lstData)
-            writer.write(lat, latData)
-            writer.write(lon, lonData)
+            writerAscending.create()
+            writerAscending.write(lstAscVar, lstAscending)
+            writerAscending.write(latAVar, latData)
+            writerAscending.write(lonAVar, lonData)
+
+            writerDescending.create()
+            writerDescending.write(lstDescVar, lstDescending)
+            writerDescending.write(latDVar, latData)
+            writerDescending.write(lonDVar, lonData)
         } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted.nc: ${e.message}")
+            print("ERROR creating file $prodName/reformatted_xxx.nc: ${e.message}")
+            throw e
+        } finally {
+            writerAscending.close()
+            writerDescending.close()
+            lstFile.close()
+            geodeticFile.close()
+            flags.close()
         }
 
-        writer.close()
-        lstFile.close()
-        geodeticFile.close()
-        flags.close()
-
+        print(" warping... ")
         val wgs84 = SpatialReference()
         wgs84.ImportFromEPSG(4326)
 
-        val lst = gdal.Open("NETCDF:$prodName/reformatted.nc:surface_temperature")
-        val map = mapOf(
+        val lstAscdataset = gdal.Open("NETCDF:$prodName/reformatted_ascending.nc:surface_temperature")
+        val mapA = mapOf(
                 "LINE_OFFSET" to "1", "LINE_STEP" to "1",
                 "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
-                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted.nc:lon",
-                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted.nc:lat"
+                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted_ascending.nc:lon",
+                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted_ascending.nc:lat"
         )
 
-        lst.SetMetadata(Hashtable(map), "GEOLOCATION")
+        lstAscdataset.SetMetadata(Hashtable(mapA), "GEOLOCATION")
 
-        val ris = gdal.Warp("$prodName/lst_warp_rebuild.tif", arrayOf(lst), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/lst_warp_rebuild.tif", 600000)
-        lst.delete()
+        var ris = gdal.Warp("$prodName/ascending.tif", arrayOf(lstAscdataset), WarpOptions(gdal.ParseCommandLine("-t_srs EPSG:4326 -tr 0.012349251965289 0.012349251965289 -geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
+        monitorFile("$prodName/ascending.tif", timeout)
+        lstAscdataset.delete()
+        ris.delete()
+        print(" ascending complete. Starting descending...")
+
+        val lstDescdataset = gdal.Open("NETCDF:$prodName/reformatted_descending.nc:surface_temperature")
+        val mapD = mapOf(
+                "LINE_OFFSET" to "1", "LINE_STEP" to "1",
+                "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
+                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted_descending.nc:lon",
+                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted_descending.nc:lat"
+        )
+
+        lstDescdataset.SetMetadata(Hashtable(mapD), "GEOLOCATION")
+
+        ris = gdal.Warp("$prodName/descending.tif", arrayOf(lstDescdataset), WarpOptions(gdal.ParseCommandLine("-t_srs EPSG:3857 -tr 0.012349251965289 0.012349251965289 -geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
+        monitorFile("$prodName/descending.tif", 600000)
+        lstDescdataset.delete()
         ris.delete()
         println("done")
     }
 
-    @ShellMethod("Convert OGVI products")
+    @ShellMethod("Convert SST products")
+    fun rebuildSST(prodName: String, force: Boolean = false) {
+        if (!force && Files.exists(Paths.get(prodName, "ascending.tif")) && Files.size(Paths.get(prodName, "ascending.tif")) > 50000) return
+
+        print(" * Converting $prodName... ")
+        Files.deleteIfExists(Paths.get("$prodName/reformatted_ascending.nc"))
+        Files.deleteIfExists(Paths.get("$prodName/reformatted_descending.nc"))
+        Files.deleteIfExists(Paths.get("$prodName/ascending.tif"))
+        Files.deleteIfExists(Paths.get("$prodName/descending.tif"))
+
+        val pattern = "SLSTRA"
+        var prod = ""
+        var file = File("$prodName/").listFiles()
+        for (item in file)
+            if (item.toString().contains(pattern))
+                prod = item.toString()
+//
+//        val prod = PathMatchingResourcePatternResolver().getResources("file:$pattern")
+//        if (matches.isEmpty()) {
+//            println(" * No product matches the pattern '$pattern'")
+//            return
+//        }
+        println("processing "+prod)
+        val sstFile = NetcdfDataset.openDataset(prod)
+//        val sstFile = NetcdfDataset.openDataset("$prodName/"+prod)
+//        val sstFile = NetcdfDataset.openDataset("$prodName/geodetic_in.nc")
+//        val flags = NetcdfDataset.openDataset("$prodName/flags_in.nc")
+
+        val sstData = sstFile.findVariable("sea_surface_temperature").read().reduce(0) as ArrayDouble.D2
+//        println(sstData.shape[0])
+//        println(sstData.shape[1])
+//        println(sstData.shape[2])
+
+        val latData = sstFile.findVariable("lat").read() as ArrayFloat.D2
+        val lonData = sstFile.findVariable("lon").read() as ArrayFloat.D2
+//        val confidenceIn = flags.findVariable("confidence_in").read() as ArrayShort.D2
+
+
+        val shape = sstData.shape
+        val sstAscending = ArrayFloat.D2(shape[0], shape[1])
+        val sstDescending = ArrayFloat.D2(shape[0], shape[1])
+
+        var cloud = 0
+        for (y in 0 until sstData.shape[0])
+            for (x in 0 until sstData.shape[1])
+//                when {
+//                    DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384 -> {
+//                        lstData[y, x] = Float.NaN
+//                        cloud++
+//                    }
+//                    !(x in 30..lstData.shape[1] - 30 || y in 30..lstData.shape[0] - 30) -> lstData[y, x] = Float.NaN  // stay away from borders
+//                    else -> {
+                        if(latData[y, x] > 85 || latData[y, x] < -85) {
+                            sstAscending[y, x] = sstData[y, x].toFloat()
+                            sstDescending[y, x] = sstData[y, x].toFloat()
+                        } else if(latData[y, x] - latData[Math.max(0, y - 2), x] >= 0)
+                            sstAscending[y, x] = sstData[y, x].toFloat()      // ascending
+                        else if(latData[y, x] - latData[Math.max(0, y - 2), x] <= 0 )
+                            sstDescending[y, x] = sstData[y, x].toFloat()    // descending
+//                    }
+//                }
+
+//        print("cloudy pixels ${(cloud.toDouble() / (shape[0] * shape[1]) * 100).format(2)}%... ")
+
+        val dimensions = sstFile.findVariable("sea_surface_temperature").dimensions
+
+        val writerAscending = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_ascending.nc")
+        val writerDescending = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_descending.nc")
+
+        val dimensionAscending = mutableListOf<Dimension>(
+                writerAscending.addDimension(null, dimensions[1].fullName, dimensions[1].length),
+                writerAscending.addDimension(null, dimensions[2].fullName, dimensions[2].length)
+        )
+        val dimensionDescending = mutableListOf<Dimension>(
+                writerDescending.addDimension(null, dimensions[1].fullName, dimensions[1].length),
+                writerDescending.addDimension(null, dimensions[2].fullName, dimensions[2].length)
+        )
+
+        // populate
+        val sstAscVar = writerAscending.addVariable(null, "surface_temperature", DataType.FLOAT, dimensionAscending)
+        sstAscVar.addAll(sstFile.findVariable("sea_surface_temperature").attributes)
+        sstAscVar.addAttribute(Attribute("valid_range", "200, 350"))
+        sstAscVar.addAttribute(Attribute("_FillValue", "nan"))
+
+        val sstDescVar = writerDescending.addVariable(null, "surface_temperature", DataType.FLOAT, dimensionDescending)
+        sstDescVar.addAll(sstFile.findVariable("sea_surface_temperature").attributes)
+        sstDescVar.addAttribute(Attribute("valid_range", "200, 350"))
+        sstDescVar.addAttribute(Attribute("_FillValue", "nan"))
+
+        val latAVar = writerAscending.addVariable(null, "lat", DataType.DOUBLE, dimensionAscending)
+        latAVar.addAll(sstFile.findVariable("lat").attributes)
+
+        val latDVar = writerDescending.addVariable(null, "lat", DataType.DOUBLE, dimensionDescending)
+        latDVar.addAll(sstFile.findVariable("lat").attributes)
+
+        val lonAVar = writerAscending.addVariable(null, "lon", DataType.DOUBLE, dimensionAscending)
+        lonAVar.addAll(sstFile.findVariable("lon").attributes)
+
+        val lonDVar = writerDescending.addVariable(null, "lon", DataType.DOUBLE, dimensionDescending)
+        lonDVar.addAll(sstFile.findVariable("lon").attributes)
+
+        // create the file
+        try {
+            writerAscending.create()
+            writerAscending.write(sstAscVar, sstAscending)
+            writerAscending.write(latAVar, latData)
+            writerAscending.write(lonAVar, lonData)
+
+            writerDescending.create()
+            writerDescending.write(sstDescVar, sstDescending)
+            writerDescending.write(latDVar, latData)
+            writerDescending.write(lonDVar, lonData)
+        } catch (e: IOException) {
+            print("ERROR creating file $prodName/reformatted_xxx.nc: ${e.message}")
+            throw e
+        } finally {
+            writerAscending.close()
+            writerDescending.close()
+            sstFile.close()
+//            sstFile.close()
+//            flags.close()
+        }
+
+        print(" warping... ")
+        val wgs84 = SpatialReference()
+        wgs84.ImportFromEPSG(4326)
+
+        val sstAscdataset = gdal.Open("NETCDF:$prodName/reformatted_ascending.nc:surface_temperature")
+        val mapA = mapOf(
+                "LINE_OFFSET" to "1", "LINE_STEP" to "1",
+                "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
+                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted_ascending.nc:lon",
+                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted_ascending.nc:lat"
+        )
+
+//        sstAscdataset.SetMetadata(Hashtable(mapA), "GEOLOCATION")
+
+        var ris = gdal.Warp("$prodName/ascending.tif", arrayOf(sstAscdataset), WarpOptions(gdal.ParseCommandLine("-t_srs EPSG:4326 -tr 0.012349251965289 0.012349251965289 -geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
+//        monitorFile("$prodName/ascending.tif", timeout)
+        sstAscdataset.delete()
+        ris.delete()
+        print(" ascending complete. Starting descending...")
+
+        val sstDescdataset = gdal.Open("NETCDF:$prodName/reformatted_descending.nc:surface_temperature")
+        val mapD = mapOf(
+                "LINE_OFFSET" to "1", "LINE_STEP" to "1",
+                "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
+                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted_descending.nc:lon",
+                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted_descending.nc:lat"
+        )
+
+        sstDescdataset.SetMetadata(Hashtable(mapD), "GEOLOCATION")
+
+        ris = gdal.Warp("$prodName/descending.tif", arrayOf(sstDescdataset), WarpOptions(gdal.ParseCommandLine("-t_srs EPSG:3857 -tr 0.012349251965289 0.012349251965289 -geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
+//        monitorFile("$prodName/descending.tif", 600000)
+        sstDescdataset.delete()
+        ris.delete()
+        println("done")
+
+        System.gc()
+    }
+
+    @ShellMethod("Convert OLCI land products")
 //    fun rebuildOLCI(prodName: String, shpFile: String) {
     fun rebuildOLCILand(prodName: String, force: Boolean = false) {
       if (!force
@@ -694,14 +824,6 @@ class Sentinel3Commands {
                && Files.exists(Paths.get(prodName, "iwv_lzw_rebuild.tif"))
                 && Files.size(Paths.get(prodName, "iwv_lzw_rebuild.tif")) > 50000
                 ) return
-//        if (!force
-//                && Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif"))
-//                && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000
-//                && Files.exists(Paths.get(prodName, "otci_warp_rebuild.tif"))
-//                && Files.size(Paths.get(prodName, "otci_warp_rebuild.tif")) > 50000
-//                && Files.exists(Paths.get(prodName, "iwv_warp_rebuild.tif"))
-//                && Files.size(Paths.get(prodName, "iwv_warp_rebuild.tif")) > 50000
-//                ) return
         print(" * Converting $prodName... ")
         val ogviFile = NetcdfDataset.openDataset("$prodName/ogvi.nc")
         val otciFile = NetcdfDataset.openDataset("$prodName/otci.nc")
@@ -842,13 +964,19 @@ class Sentinel3Commands {
 
         val risOGVI = gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogviDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
 //        val risOGVI = gdal.Warp("$prodName/ogvi_warp_rebuild.tif", arrayOf(ogviDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/ogvi_warp_rebuild.tif", 60000)
+//        monitorFile("$prodName/ogvi_warp_rebuild.tif", 60000)
+        ogviDTS.delete()
+        risOGVI.delete()
 
         val risOTCI = gdal.Warp("$prodName/otci_warp_rebuild.tif", arrayOf(otciDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/otci_warp_rebuild.tif", 60000)
+//        monitorFile("$prodName/otci_warp_rebuild.tif", 60000)
+        otciDTS.delete()
+        risOTCI.delete()
 
         val risIWV = gdal.Warp("$prodName/iwv_warp_rebuild.tif", arrayOf(iwvDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/iwv_warp_rebuild.tif", 60000)
+//        monitorFile("$prodName/iwv_warp_rebuild.tif", 60000)
+        iwvDTS.delete()
+        risIWV.delete()
 
         var commandOGVI = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/ogvi_warp_rebuild.tif $prodName/ogvi_lzw_rebuild.tif"
         println(commandOGVI)
@@ -862,14 +990,6 @@ class Sentinel3Commands {
         println(commandIWV)
         Runtime.getRuntime().exec(commandIWV)
 
-        ogviDTS.delete()
-        risOGVI.delete()
-
-        otciDTS.delete()
-        risOTCI.delete()
-
-        iwvDTS.delete()
-        risIWV.delete()
 
         var delete ="rm -rf $prodName/reformatted_otci.nc"
         println(delete)
@@ -894,6 +1014,7 @@ class Sentinel3Commands {
 
     }
 
+    @ShellMethod("Convert OLCI marine products")
     fun rebuildOLCIMarine(prodName: String, force: Boolean = false) {
         if (!force
                 && Files.exists(Paths.get(prodName, "chl_lzw_rebuild.tif"))
@@ -912,18 +1033,10 @@ class Sentinel3Commands {
                 && Files.size(Paths.get(prodName, "par_lzw_rebuild.tif")) > 50000
                 && Files.exists(Paths.get(prodName, "a86_lzw_rebuild.tif"))
                 && Files.size(Paths.get(prodName, "a86_lzw_rebuild.tif")) > 50000
-                && Files.exists(Paths.get(prodName, "iww_lzw_rebuild.tif"))
-                && Files.size(Paths.get(prodName, "iww_lzw_rebuild.tif")) > 50000
                 ) return
-//        if (!force
-//                && Files.exists(Paths.get(prodName, "ogvi_warp_rebuild.tif"))
-//                && Files.size(Paths.get(prodName, "ogvi_warp_rebuild.tif")) > 50000
-//                && Files.exists(Paths.get(prodName, "otci_warp_rebuild.tif"))
-//                && Files.size(Paths.get(prodName, "otci_warp_rebuild.tif")) > 50000
-//                && Files.exists(Paths.get(prodName, "iwv_warp_rebuild.tif"))
-//                && Files.size(Paths.get(prodName, "iwv_warp_rebuild.tif")) > 50000
-//                ) return
+
         print(" * Converting $prodName... ")
+
         val chlFile = NetcdfDataset.openDataset("$prodName/chl_oc4me.nc")
         val tsmFile = NetcdfDataset.openDataset("$prodName/tsm_nn.nc")
         val kd9File = NetcdfDataset.openDataset("$prodName/trsp.nc")
@@ -931,7 +1044,6 @@ class Sentinel3Commands {
         val chnFile = NetcdfDataset.openDataset("$prodName/chl_nn.nc")
         val adgFile = NetcdfDataset.openDataset("$prodName/iop_nn.nc")
         val parFile = NetcdfDataset.openDataset("$prodName/par.nc")
-        val iwvFile = NetcdfDataset.openDataset("$prodName/iwv.nc")
         val flags = NetcdfDataset.openDataset("$prodName/wqsf.nc")
         val geodeticFile = NetcdfDataset.openDataset("$prodName/geo_coordinates.nc")
 
@@ -943,28 +1055,22 @@ class Sentinel3Commands {
         val chnData = chnFile.findVariable("CHL_NN").read() as ArrayFloat.D2
         val adgData = adgFile.findVariable("ADG443_NN").read() as ArrayFloat.D2
         val parData = parFile.findVariable("PAR").read() as ArrayFloat.D2
-        val iwvData = iwvFile.findVariable("IWV").read() as ArrayFloat.D2
+
+        val flag = flags.findVariable("WQSF").read() as ArrayLong.D2
 
         val latData = geodeticFile.findVariable("latitude").read() as ArrayDouble.D2
         val lonData = geodeticFile.findVariable("longitude").read() as ArrayDouble.D2
 
-
-
-        //val confidenceIn = flags.findVariable("WQSF").read() as ArrayShort.D2
-        //val shape = iwvData.shape
-        //var land = 0
-        //for (y in 0 until iwvData.shape[0])
-        //    for (x in 0 until iwvData.shape[1])
-        //        when {
-        //            !(x in 30..iwvData.shape[1] - 30 || y in 30..iwvData.shape[0] - 30) -> iwvData[y, x] = Float.NaN  // stay away from borders
-        //            DataType.unsignedShortToInt(confidenceIn[y, x]) and 16384 == 16384 -> {
-        //                iwvData[y, x] = Float.NaN
-         //               land++
-         //           }
-         //       }
-
-
         val dimensions = chlFile.findVariable("CHL_OC4ME").dimensions
+
+        maskSunglint(chlData,flag)
+        maskSunglint(tsmData,flag)
+        maskSunglint(kd9Data,flag)
+        maskSunglint(t86Data,flag)
+        maskSunglint(a86Data,flag)
+        maskSunglint(chnData,flag)
+        maskSunglint(adgData,flag)
+        maskSunglint(parData,flag)
 
         val writerCHL = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_chl.nc")
         val writerTSM = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_tsm.nc")
@@ -974,52 +1080,15 @@ class Sentinel3Commands {
         val writerCHN = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_chn.nc")
         val writerADG = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_adg.nc")
         val writerPAR = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_par.nc")
-        val writerIWV = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_iww.nc")
 
-        val newDimensionsCHL = mutableListOf<Dimension>(
-                writerCHL.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writerCHL.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
-
-        val newDimensionsTSM = mutableListOf<Dimension>(
-                writerTSM.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writerTSM.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
-
-        val newDimensionsKD9 = mutableListOf<Dimension>(
-                writerKD9.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writerKD9.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
-
-        val newDimensionsT86 = mutableListOf<Dimension>(
-                writerT86.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writerT86.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
-
-        val newDimensionsA86 = mutableListOf<Dimension>(
-                writerA86.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writerA86.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
-
-        val newDimensionsCHN = mutableListOf<Dimension>(
-                writerCHN.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writerCHN.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
-
-        val newDimensionsADG = mutableListOf<Dimension>(
-                writerADG.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writerADG.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
-
-        val newDimensionsPAR = mutableListOf<Dimension>(
-                writerPAR.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writerPAR.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
-
-        val newDimensionsIWV = mutableListOf<Dimension>(
-                writerIWV.addDimension(null, dimensions[0].fullName, dimensions[0].length),
-                writerIWV.addDimension(null, dimensions[1].fullName, dimensions[1].length)
-        )
+        val newDimensionsCHL = getDimension(writerCHL,dimensions)
+        val newDimensionsTSM = getDimension(writerTSM,dimensions)
+        val newDimensionsKD9 = getDimension(writerKD9,dimensions)
+        val newDimensionsT86 = getDimension(writerT86,dimensions)
+        val newDimensionsA86 = getDimension(writerA86,dimensions)
+        val newDimensionsCHN = getDimension(writerCHN,dimensions)
+        val newDimensionsADG = getDimension(writerADG,dimensions)
+        val newDimensionsPAR = getDimension(writerPAR,dimensions)
 
         // populate
         val chl = writerCHL.addVariable(null, "chl", DataType.FLOAT, newDimensionsCHL)
@@ -1030,7 +1099,6 @@ class Sentinel3Commands {
         val chn = writerCHN.addVariable(null, "chn", DataType.FLOAT, newDimensionsCHN)
         val adg = writerADG.addVariable(null, "adg", DataType.FLOAT, newDimensionsADG)
         val par = writerPAR.addVariable(null, "par", DataType.FLOAT, newDimensionsPAR)
-        val iwv = writerIWV.addVariable(null, "iwv", DataType.FLOAT, newDimensionsIWV)
 
         chl.addAll(chlFile.findVariable("CHL_OC4ME").attributes)
         chl.addAttribute(Attribute("_FillValue", "nan"))
@@ -1056,162 +1124,15 @@ class Sentinel3Commands {
         par.addAll(parFile.findVariable("PAR").attributes)
         par.addAttribute(Attribute("_FillValue", "nan"))
 
-        iwv.addAll(iwvFile.findVariable("IWV").attributes)
-        iwv.addAttribute(Attribute("_FillValue", "nan"))
-
-        val latCHL = writerCHL.addVariable(null, "lat", DataType.DOUBLE, newDimensionsCHL)
-        latCHL.addAll(geodeticFile.findVariable("latitude").attributes)
-
-        val lonCHL = writerCHL.addVariable(null, "lon", DataType.DOUBLE, newDimensionsCHL)
-        lonCHL.addAll(geodeticFile.findVariable("longitude").attributes)
-
         // create the file
-        try {
-            writerCHL.create()
-            writerCHL.write(chl, chlData)
-            writerCHL.write(latCHL, latData)
-            writerCHL.write(lonCHL, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted_chl.nc: ${e.message}")
-        }
-
-        val latTSM = writerTSM.addVariable(null, "lat", DataType.DOUBLE, newDimensionsTSM)
-        latTSM.addAll(geodeticFile.findVariable("latitude").attributes)
-
-        val lonTSM = writerTSM.addVariable(null, "lon", DataType.DOUBLE, newDimensionsTSM)
-        lonTSM.addAll(geodeticFile.findVariable("longitude").attributes)
-
-        try {
-            writerTSM.create()
-            writerTSM.write(tsm, tsmData)
-            writerTSM.write(latTSM, latData)
-            writerTSM.write(lonTSM, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted_tsm.nc: ${e.message}")
-        }
-
-        val latKD9 = writerKD9.addVariable(null, "lat", DataType.DOUBLE, newDimensionsKD9)
-        latKD9.addAll(geodeticFile.findVariable("latitude").attributes)
-
-        val lonKD9 = writerKD9.addVariable(null, "lon", DataType.DOUBLE, newDimensionsKD9)
-        lonKD9.addAll(geodeticFile.findVariable("longitude").attributes)
-
-        try {
-            writerKD9.create()
-            writerKD9.write(kd9, kd9Data)
-            writerKD9.write(latKD9, latData)
-            writerKD9.write(lonKD9, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted_kd9.nc: ${e.message}")
-        }
-
-        val latT86 = writerT86.addVariable(null, "lat", DataType.DOUBLE, newDimensionsT86)
-        latT86.addAll(geodeticFile.findVariable("latitude").attributes)
-
-        val lonT86 = writerT86.addVariable(null, "lon", DataType.DOUBLE, newDimensionsT86)
-        lonT86.addAll(geodeticFile.findVariable("longitude").attributes)
-
-        // create the file
-        try {
-            writerT86.create()
-            writerT86.write(t86, t86Data)
-            writerT86.write(latT86, latData)
-            writerT86.write(lonT86, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted_t86.nc: ${e.message}")
-        }
-
-        val latA86 = writerA86.addVariable(null, "lat", DataType.DOUBLE, newDimensionsA86)
-        latA86.addAll(geodeticFile.findVariable("latitude").attributes)
-
-        val lonA86 = writerA86.addVariable(null, "lon", DataType.DOUBLE, newDimensionsA86)
-        lonA86.addAll(geodeticFile.findVariable("longitude").attributes)
-
-        // create the file
-        try {
-            writerA86.create()
-            writerA86.write(a86, a86Data)
-            writerA86.write(latA86, latData)
-            writerA86.write(lonA86, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted_a86.nc: ${e.message}")
-        }
-
-        val latCHN = writerCHN.addVariable(null, "lat", DataType.DOUBLE, newDimensionsCHN)
-        latCHN.addAll(geodeticFile.findVariable("latitude").attributes)
-
-        val lonCHN = writerCHN.addVariable(null, "lon", DataType.DOUBLE, newDimensionsCHN)
-        lonCHN.addAll(geodeticFile.findVariable("longitude").attributes)
-
-        // create the file
-        try {
-            writerCHN.create()
-            writerCHN.write(chn, chnData)
-            writerCHN.write(latCHN, latData)
-            writerCHN.write(lonCHN, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted_chn.nc: ${e.message}")
-        }
-
-        val latADG = writerADG.addVariable(null, "lat", DataType.DOUBLE, newDimensionsADG)
-        latADG.addAll(geodeticFile.findVariable("latitude").attributes)
-
-        val lonADG = writerADG.addVariable(null, "lon", DataType.DOUBLE, newDimensionsADG)
-        lonADG.addAll(geodeticFile.findVariable("longitude").attributes)
-
-        // create the file
-        try {
-            writerADG.create()
-            writerADG.write(adg, adgData)
-            writerADG.write(latADG, latData)
-            writerADG.write(lonADG, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted_adg.nc: ${e.message}")
-        }
-
-        val latPAR = writerPAR.addVariable(null, "lat", DataType.DOUBLE, newDimensionsPAR)
-        latPAR.addAll(geodeticFile.findVariable("latitude").attributes)
-
-        val lonPAR = writerPAR.addVariable(null, "lon", DataType.DOUBLE, newDimensionsPAR)
-        lonPAR.addAll(geodeticFile.findVariable("longitude").attributes)
-
-        // create the file
-        try {
-            writerPAR.create()
-            writerPAR.write(par, parData)
-            writerPAR.write(latPAR, latData)
-            writerPAR.write(lonPAR, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted_par.nc: ${e.message}")
-        }
-
-        val latIWV = writerIWV.addVariable(null, "lat", DataType.DOUBLE, newDimensionsIWV)
-        latIWV.addAll(geodeticFile.findVariable("latitude").attributes)
-
-        val lonIWV = writerIWV.addVariable(null, "lon", DataType.DOUBLE, newDimensionsIWV)
-        lonIWV.addAll(geodeticFile.findVariable("longitude").attributes)
-
-        // create the file
-        try {
-            writerIWV.create()
-            writerIWV.write(iwv, iwvData)
-            writerIWV.write(latIWV, latData)
-            writerIWV.write(lonIWV, lonData)
-        } catch (e: IOException) {
-            print("ERROR creating file $prodName/reformatted_iww.nc: ${e.message}")
-        }
-
-        writerCHL.close()
-        chlFile.close()
-        writerTSM.close()
-        tsmFile.close()
-        writerKD9.close()
-        kd9File.close()
-        aerFile.close()
-        chnFile.close()
-        adgFile.close()
-        parFile.close()
-        iwvFile.close()
+        createNetcdf(writerCHL,chl,chlData,geodeticFile,newDimensionsCHL,latData,lonData)
+        createNetcdf(writerTSM,tsm,tsmData,geodeticFile,newDimensionsTSM,latData,lonData)
+        createNetcdf(writerKD9,kd9,kd9Data,geodeticFile,newDimensionsKD9,latData,lonData)
+        createNetcdf(writerT86,t86,t86Data,geodeticFile,newDimensionsT86,latData,lonData)
+        createNetcdf(writerA86,a86,a86Data,geodeticFile,newDimensionsA86,latData,lonData)
+        createNetcdf(writerCHN,chn,chnData,geodeticFile,newDimensionsCHN,latData,lonData)
+        createNetcdf(writerADG,adg,adgData,geodeticFile,newDimensionsADG,latData,lonData)
+        createNetcdf(writerPAR,par,parData,geodeticFile,newDimensionsPAR,latData,lonData)
 
         flags.close()
         geodeticFile.close()
@@ -1227,7 +1148,6 @@ class Sentinel3Commands {
         val chnDTS = gdal.Open("NETCDF:$prodName/reformatted_chn.nc:chn")
         val adgDTS = gdal.Open("NETCDF:$prodName/reformatted_adg.nc:adg")
         val parDTS = gdal.Open("NETCDF:$prodName/reformatted_par.nc:par")
-        val iwvDTS = gdal.Open("NETCDF:$prodName/reformatted_iww.nc:iwv")
 
         val mapCHL = mapOf(
                 "LINE_OFFSET" to "1", "LINE_STEP" to "1",
@@ -1285,13 +1205,6 @@ class Sentinel3Commands {
                 "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted_par.nc:lat"
         )
 
-        val mapIWV = mapOf(
-                "LINE_OFFSET" to "1", "LINE_STEP" to "1",
-                "PIXEL_OFFSET" to "1", "PIXEL_STEP" to "1",
-                "X_BAND" to "1", "X_DATASET" to "NETCDF:$prodName/reformatted_iww.nc:lon",
-                "Y_BAND" to "1", "Y_DATASET" to "NETCDF:$prodName/reformatted_iww.nc:lat"
-        )
-
         chlDTS.SetMetadata(Hashtable(mapCHL), "GEOLOCATION")
         tsmDTS.SetMetadata(Hashtable(mapTSM), "GEOLOCATION")
         kd9DTS.SetMetadata(Hashtable(mapKD9), "GEOLOCATION")
@@ -1300,153 +1213,35 @@ class Sentinel3Commands {
         chnDTS.SetMetadata(Hashtable(mapCHN), "GEOLOCATION")
         adgDTS.SetMetadata(Hashtable(mapADG), "GEOLOCATION")
         parDTS.SetMetadata(Hashtable(mapPAR), "GEOLOCATION")
-        iwvDTS.SetMetadata(Hashtable(mapIWV), "GEOLOCATION")
 
-        val risCHL = gdal.Warp("$prodName/chl_warp_rebuild.tif", arrayOf(chlDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/chl_warp_rebuild.tif", 60000)
+        createTiff(prodName,"chl",chlDTS)
+        createTiff(prodName,"tsm",tsmDTS)
+        createTiff(prodName,"kd9",kd9DTS)
+        createTiff(prodName,"t86",t86DTS)
+        createTiff(prodName,"a86",a86DTS)
+        createTiff(prodName,"chn",chnDTS)
+        createTiff(prodName,"adg",adgDTS)
+        createTiff(prodName,"par",parDTS)
 
-        val risTSM = gdal.Warp("$prodName/tsm_warp_rebuild.tif", arrayOf(tsmDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/tsm_warp_rebuild.tif", 60000)
+        Files.delete(Paths.get("$prodName/reformatted_chl.nc"))
+        Files.delete(Paths.get("$prodName/reformatted_tsm.nc"))
+        Files.delete(Paths.get("$prodName/reformatted_kd9.nc"))
+        Files.delete(Paths.get("$prodName/reformatted_t86.nc"))
+        Files.delete(Paths.get("$prodName/reformatted_a86.nc"))
+        Files.delete(Paths.get("$prodName/reformatted_chn.nc"))
+        Files.delete(Paths.get("$prodName/reformatted_adg.nc"))
+        Files.delete(Paths.get("$prodName/reformatted_par.nc"))
 
-        val risKD9 = gdal.Warp("$prodName/kd9_warp_rebuild.tif", arrayOf(kd9DTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/kd9_warp_rebuild.tif", 60000)
+        Files.delete(Paths.get("$prodName/chl_warp_rebuild.tif"))
+        Files.delete(Paths.get("$prodName/tsm_warp_rebuild.tif"))
+        Files.delete(Paths.get("$prodName/kd9_warp_rebuild.tif"))
+        Files.delete(Paths.get("$prodName/t86_warp_rebuild.tif"))
+        Files.delete(Paths.get("$prodName/a86_warp_rebuild.tif"))
+        Files.delete(Paths.get("$prodName/chn_warp_rebuild.tif"))
+        Files.delete(Paths.get("$prodName/adg_warp_rebuild.tif"))
+        Files.delete(Paths.get("$prodName/par_warp_rebuild.tif"))
 
-        val risT86 = gdal.Warp("$prodName/t86_warp_rebuild.tif", arrayOf(t86DTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/t86_warp_rebuild.tif", 60000)
-
-        val risA86 = gdal.Warp("$prodName/a86_warp_rebuild.tif", arrayOf(a86DTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/a86_warp_rebuild.tif", 60000)
-
-        val risCHN = gdal.Warp("$prodName/chn_warp_rebuild.tif", arrayOf(chnDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/chn_warp_rebuild.tif", 60000)
-
-        val risADG = gdal.Warp("$prodName/adg_warp_rebuild.tif", arrayOf(adgDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/adg_warp_rebuild.tif", 60000)
-
-        val risPAR = gdal.Warp("$prodName/par_warp_rebuild.tif", arrayOf(parDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/par_warp_rebuild.tif", 60000)
-
-        val risIWV = gdal.Warp("$prodName/iww_warp_rebuild.tif", arrayOf(iwvDTS), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
-        monitorFile("$prodName/iww_warp_rebuild.tif", 60000)
-
-        var commandCHL = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/chl_warp_rebuild.tif $prodName/chl_lzw_rebuild.tif"
-        println(commandCHL)
-        Runtime.getRuntime().exec(commandCHL)
-
-        var commandTSM = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/tsm_warp_rebuild.tif $prodName/tsm_lzw_rebuild.tif"
-        println(commandTSM)
-        Runtime.getRuntime().exec(commandTSM)
-
-        var commandKD9 = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/kd9_warp_rebuild.tif $prodName/kd9_lzw_rebuild.tif"
-        println(commandKD9)
-        Runtime.getRuntime().exec(commandKD9)
-
-        var commandT86 = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/t86_warp_rebuild.tif $prodName/t86_lzw_rebuild.tif"
-        println(commandT86)
-        Runtime.getRuntime().exec(commandT86)
-
-        var commandA86 = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/a86_warp_rebuild.tif $prodName/a86_lzw_rebuild.tif"
-        println(commandA86)
-        Runtime.getRuntime().exec(commandA86)
-
-        var commandCHN = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/chn_warp_rebuild.tif $prodName/chn_lzw_rebuild.tif"
-        println(commandCHN)
-        Runtime.getRuntime().exec(commandCHN)
-
-        var commandADG = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/adg_warp_rebuild.tif $prodName/adg_lzw_rebuild.tif"
-        println(commandADG)
-        Runtime.getRuntime().exec(commandADG)
-
-        var commandPAR = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/par_warp_rebuild.tif $prodName/par_lzw_rebuild.tif"
-        println(commandPAR)
-        Runtime.getRuntime().exec(commandPAR)
-
-        var commandIWV = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/iww_warp_rebuild.tif $prodName/iww_lzw_rebuild.tif"
-        println(commandIWV)
-        Runtime.getRuntime().exec(commandIWV)
-
-        chlDTS.delete()
-        risCHL.delete()
-
-        tsmDTS.delete()
-        risTSM.delete()
-
-        kd9DTS.delete()
-        risKD9.delete()
-
-        t86DTS.delete()
-        risT86.delete()
-
-        a86DTS.delete()
-        risA86.delete()
-
-        chnDTS.delete()
-        risCHN.delete()
-
-        adgDTS.delete()
-        risADG.delete()
-
-        parDTS.delete()
-        risPAR.delete()
-
-        iwvDTS.delete()
-        risIWV.delete()
-
-        var delete ="rm -rf $prodName/reformatted_chl.nc"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_tsm.nc"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_kd9.nc"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_t86.nc"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_a86.nc"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_chn.nc"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_adg.nc"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_par.nc"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_iww.nc"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-
-        delete ="rm -rf $prodName/chl_warp_rebuild.tif"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/tsm_warp_rebuild.tif"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/kd9_warp_rebuild.tif"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/t86_warp_rebuild.tif"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/a86_warp_rebuild.tif"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/chn_warp_rebuild.tif"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/adg_warp_rebuild.tif"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/par_warp_rebuild.tif"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/iww_warp_rebuild.tif"
-        println(delete)
-        Runtime.getRuntime().exec(delete)
+        System.gc()
 
         println("done")
 
@@ -1466,6 +1261,92 @@ class Sentinel3Commands {
         gdal.DEMProcessing("color-$prod", inds, "color-relief", "color-table.txt", DEMProcessingOptions(gdal.ParseCommandLine("-alpha -co COMPRESS=JPEG")))
         monitorFile("color-$prod", 2000000)
         println("done")
+    }
+
+    fun logToLinear (array: ArrayFloat.D2):ArrayFloat.D2{
+        val converted = ArrayFloat.D2(array.shape[0], array.shape[1])
+        for (y in 0 until array.shape[0])
+            for (x in 0 until array.shape[1])
+                converted[y,x] = Math.pow(10.0,array[y, x].toDouble()).toFloat()
+        return converted
+    }
+
+    fun maskSunglint (input: ArrayFloat.D2, flags: ArrayLong.D2){
+        for (y in 0 until input.shape[0])
+            for (x in 0 until input.shape[1])
+                when {
+                    (flags[y, x].toInt() and 2048 == 2048) or (flags[y, x].toInt() and 4096 == 4096) -> {
+                        input[y, x] = Float.NaN
+                    }
+                }
+    }
+
+    fun getDimension (writer: NetcdfFileWriter, dim: MutableList<Dimension>):MutableList<Dimension>{
+        val newDimensions = mutableListOf<Dimension>(
+                writer.addDimension(null, dim[0].fullName, dim[0].length),
+                writer.addDimension(null, dim[1].fullName, dim[1].length)
+        )
+        return newDimensions
+    }
+
+    fun createNetcdf(writer: NetcdfFileWriter, varbl: Variable, data: ArrayFloat.D2, geodetic: NetcdfDataset, dim: MutableList<Dimension>, ltData: ArrayDouble.D2, lnData:ArrayDouble.D2){
+
+        val lt = writer.addVariable(null, "lat", DataType.DOUBLE, dim)
+        lt.addAll(geodetic.findVariable("latitude").attributes)
+
+        val ln = writer.addVariable(null, "lon", DataType.DOUBLE, dim)
+        ln.addAll(geodetic.findVariable("longitude").attributes)
+
+        try {
+            writer.create()
+            writer.write(varbl, data)
+            writer.write(lt, ltData)
+            writer.write(ln, lnData)
+        } catch (e: IOException) {
+            print("ERROR creating reformatted file: ${e.message}")
+            throw e
+        } finally {
+            writer.close()
+            writer.close()
+        }
+
+    }
+
+    fun createTiff (prodName: String, outputPattern: String, dts: Dataset){
+
+        val ris = gdal.Warp("$prodName/"+outputPattern+"_warp_rebuild.tif", arrayOf(dts), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
+        dts.delete()
+        ris.delete()
+
+        var command = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/"+outputPattern+"_warp_rebuild.tif $prodName/"+outputPattern+"_lzw_rebuild.tif"
+        println(command)
+        Runtime.getRuntime().exec(command)
+
+        System.gc()
+
+    }
+
+    fun createVRT (outputPattern: String, pythonFunction: String){
+
+        var t = Files.readAllLines(Paths.get("merged_"+outputPattern+".vrt"))
+        for(i in 0..t.size) {
+            if(t[i].contains("<VRTRasterBand")) {
+                t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
+                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i+4, "import numpy as np")
+                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+//                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
+//                t.add(i+6, "    np.round_(np.nanmean(np.power(10,in_ar,dtype = 'float32'),dtype = 'float32', axis = 0), decimals=5, out = out_ar)")
+//                t.add(i+6, "    np.round_(np.log10(np.nanmean(np.power(10,in_ar,dtype = 'float32'), axis = 0, dtype = 'float32'),dtype = 'float32'), decimals=5, out = out_ar)")
+                t.add(i+6, "    "+pythonFunction)
+                t.add(i+7, "]]>")
+                t.add(i+8, "    </PixelFunctionCode>")
+            }
+        }
+        Files.write(Paths.get("merged_"+outputPattern+".vrt"), t)
+
     }
 
     fun Double.format(digits: Int) = java.lang.String.format("%.${digits}f", this)
