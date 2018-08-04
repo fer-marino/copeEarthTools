@@ -1,6 +1,5 @@
 package org.esb.tools.controllers
 
-import filters.ClaheFilter
 import org.gdal.gdal.BuildVRTOptions
 import org.gdal.gdal.Dataset
 import org.gdal.gdal.TranslateOptions
@@ -24,19 +23,26 @@ class Sentinel2Commands {
         // heavy on memory. Are we sure?
         val datasets = mutableListOf<Dataset>()
         matches.filter { it.isFile }.forEach {
-            datasets.add(gdal.Open(it.file.absolutePath))
+            try {
+                val prod = gdal.Open(it.file.absolutePath + "/MTD_MSIL1C.xml")
+                val datasetName = prod.GetMetadata_Dict("SUBDATASETS")["SUBDATASET_1_NAME"].toString()
+                datasets.add(gdal.Open(datasetName))
+                prod.delete()
+            } catch (e: Exception) {
+                println(" ** Error: unable to open dataset ${it.file.absoluteFile}")
+            }
         }
 
         println(" * Found ${datasets.size} produts mathing the provided pattern. Merging...")
 
-        val mosaic = gdal.BuildVRT("mosaic", datasets.toTypedArray(), BuildVRTOptions(gdal.ParseCommandLine(""))) // TODO add options
+        val mosaic = gdal.BuildVRT("mosaic", datasets.toTypedArray(), BuildVRTOptions(gdal.ParseCommandLine("-a_srs EPSG:4326"))) // TODO add options
 
 //        gdal.Translate(destinationFile, mosaic, TranslateOptions(gdal.ParseCommandLine(""))).delete() // TODO add options
 
-        println(" ** Equalizing...")
-        ClaheFilter(64, 255).apply(mosaic)
+//        println(" ** Equalizing...")
 
-        gdal.Translate(destinationFile, mosaic, TranslateOptions(gdal.ParseCommandLine(""))).delete() // TODO add options
+        println("Translating....")
+        gdal.Translate(destinationFile, mosaic, TranslateOptions(gdal.ParseCommandLine("-a_srs EPSG:4326 -tr 10 10 -co COMPRESS=LZW"))).delete() // TODO add options
 
 
         // wrap up

@@ -1,5 +1,3 @@
-#logging.level.root: error
-
 datahub:
   hubs:
     - id: "s3_preops"
@@ -8,13 +6,17 @@ datahub:
       password: "s3guest"
 #      parallelDownloads: 3
     - id: "dias"
-      url: "http://early.onda-dias.eu/catalogue/"
-      username: "earlyadopter1"
-      password: "Qz5T6ufYjJgbq27C"
+      url: "https://catalogue.onda-dias.eu/dias-catalogue"
+      username: "fernando.marino85@gmail.com"
+      password: "password"
 #      parallelDownloads: 5
     - id: "scihub"
       url: "https://scihub.copernicus.eu/dhus"
       username: "test"
       password: "test"
 #      parallelDownloads: 5
+    - id: "s5p"
+      url: "https://s5phub.copernicus.eu/dhus"
+      username: "s5pguest"
+      password: "s5pguest"
   proxyUrl: "none"

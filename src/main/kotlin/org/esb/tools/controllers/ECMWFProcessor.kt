@@ -20,8 +20,8 @@ class ECMWFProcessor {
 
     @ShellMethod("Load all Wind ")
     fun loadECMWF(
-        @ShellOption(defaultValue = "wrfout_d03_2017-07-13_12_00_00") file: String,
-        @ShellOption(defaultValue = "test.json") jsonFile: String
+            @ShellOption(defaultValue = "wrfout_d03_2017-07-13_12_00_00") file: String,
+            @ShellOption(defaultValue = "test.json") jsonFile: String
     ) {
         val start = System.currentTimeMillis()
 
@@ -42,6 +42,7 @@ class ECMWFProcessor {
                 val yy = Math.min(lat.shape[2].toDouble() - 1, y).toInt()
                 return lat[0, xx, yy]
             }
+
             override fun getLon(x: Double, y: Double): Float {
                 val xx = Math.min(lon.shape[1].toDouble() - 1, x).toInt()
                 val yy = Math.min(lon.shape[2].toDouble() - 1, y).toInt()
@@ -58,10 +59,10 @@ class ECMWFProcessor {
 
     @ShellMethod("Convert NetCDF variable to ascii grid format ")
     fun toAsciiGrid(
-        varName: String,
-        @ShellOption(defaultValue = "XLAT") latVarName: String,
-        @ShellOption(defaultValue = "XLONG") lonVarName: String,
-        @ShellOption(defaultValue = "wrfout_d03_2017-07-13_12_00_00") inputFile: String
+            varName: String,
+            @ShellOption(defaultValue = "XLAT") latVarName: String,
+            @ShellOption(defaultValue = "XLONG") lonVarName: String,
+            @ShellOption(defaultValue = "wrfout_d03_2017-07-13_12_00_00") inputFile: String
     ) {
         val dataset = NetcdfDataset.openDataset(inputFile)
         val lat = dataset.findVariable(latVarName).read() as ArrayFloat.D3

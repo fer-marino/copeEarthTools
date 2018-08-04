@@ -119,7 +119,7 @@ public class ClaheFilter {
      * <br>Bins: 255.
      * <br>Slope: 3.
      */
-    public Clahe() {
+    public ClaheFilter() {
     }
 
     /**
@@ -128,7 +128,7 @@ public class ClaheFilter {
      * @param blockRadius Block radius.
      * @param bins        Bins.
      */
-    public Clahe(int blockRadius, int bins) {
+    public ClaheFilter(int blockRadius, int bins) {
         this.blockRadius = blockRadius;
         this.bins = bins;
     }
@@ -140,7 +140,7 @@ public class ClaheFilter {
      * @param bins        Bins.
      * @param slope       Slope.
      */
-    public Clahe(int blockRadius, int bins, float slope) {
+    public ClaheFilter(int blockRadius, int bins, float slope) {
         this.blockRadius = blockRadius;
         this.bins = bins;
         this.slope = slope;
@@ -156,24 +156,26 @@ public class ClaheFilter {
             Band band = null;
 
             if (input.getRasterCount() == 1) {
-                band = input.GetRasterBand(0);
+                band = input.GetRasterBand(1);
 
             } else {
                 // TODO convert to gray scale and apply the algorithm
-
+                band = input.GetRasterBand(1);
             }
 
-            double[] stats = new double[5];
+            double[] stats = new double[2];
             band.ComputeBandStats(stats);
+            double min = stats[0], max = stats[1];
 
             int dataType = band.getDataType();
             if(dataType == gdalconst.GDT_Byte) {
                 int res = band.ReadRaster(0, 0, width, height, rasterData);
-            } else if(dataType == gdalconst.GDT_CInt16) {
-                short[] tmpBuffer = new short[width*height];
+            } else if(dataType == gdalconst.GDT_UInt16) {
+                int[] tmpBuffer = new int[width*height];
                 int res = band.ReadRaster(0, 0, width, height, tmpBuffer);
                 for (int i = 0; i < tmpBuffer.length; i++) {
-                    rasterData[i] = Short.valueOf(tmpBuffer[i]).byteValue(); // TODO rescale
+//                    rasterData[i] = Short.valueOf(tmpBuffer[i]).byteValue(); // TODO rescale
+                    rasterData[i] = (byte) ((tmpBuffer[i] - min) / max * 255);
                 }
             } else
                 throw new IllegalArgumentException("Unsupported data type");

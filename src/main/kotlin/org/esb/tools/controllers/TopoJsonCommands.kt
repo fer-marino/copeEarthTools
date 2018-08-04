@@ -16,9 +16,9 @@ class TopoJsonCommands {
 
     @ShellMethod("Load all SRAL ")
     fun loadAllSral(
-        @ShellOption(defaultValue = "uncompressed") folder: String,
-        @ShellOption(defaultValue = ".*") filter: Regex,
-        @ShellOption(defaultValue = "test.json") jsonFile: String
+            @ShellOption(defaultValue = "uncompressed") folder: String,
+            @ShellOption(defaultValue = ".*") filter: Regex,
+            @ShellOption(defaultValue = "test.json") jsonFile: String
     ) {
         val path = Paths.get(folder)
 

@@ -1,7 +1,7 @@
 buildscript {
     ext {
-        kotlinVersion = '1.2.41'
-        springBootVersion = '2.0.1.RELEASE'
+        kotlinVersion = '1.2.60'
+        springBootVersion = '2.0.4.RELEASE'
         netcdfJavaVersion = '4.6.10'
     }
     repositories {
@@ -30,7 +30,7 @@ apply plugin: 'io.spring.dependency-management'
 group = 'org.earthstartsbeating'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = 1.8
-mainClassName = 'org.esb.tools.ApplicationKt'
+mainClassName = 'org.esb.tools.EsbToolsKt'
 
 compileKotlin {
     kotlinOptions {

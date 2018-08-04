@@ -15,12 +15,11 @@ import ucar.nc2.Dimension
 import ucar.nc2.NetcdfFileWriter
 import ucar.nc2.Variable
 import ucar.nc2.dataset.NetcdfDataset
+import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
-import java.io.File
-import java.time.Clock
 
 @ShellComponent
 class Sentinel3Commands {
@@ -28,9 +27,8 @@ class Sentinel3Commands {
     @Value("\${gdalTimeout:16000000}")
     private var timeout: Int = 16000000
 
-    @ShellMethod("Converte and merge multiple LST products")
+    @ShellMethod("Convert and merge multiple LST products")
     fun lstMerge(pattern: String,
-                 //@ShellOption(defaultValue = " ") outputOptions: String = "",
                  @ShellOption(defaultValue = "") outputOptions: String = "",
                  @ShellOption(defaultValue = "false") force: Boolean = false) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
@@ -102,10 +100,10 @@ class Sentinel3Commands {
         val dd = gdal.Translate("descending.tif", desc, TranslateOptions(gdal.ParseCommandLine(outputOptions)))
 
         gdal.Warp("${matches.first().file.parentFile}/ascending-warp.tif", arrayOf(da),
-                WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:3857 -wo NUM_THREADS=3"))).delete()
+                WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3"))).delete()
 
         gdal.Warp("${matches.first().file.parentFile}/descending-warp.tif", arrayOf(dd),
-                WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:3857 -wo NUM_THREADS=3"))).delete()
+                WarpOptions(gdal.ParseCommandLine("-overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=3"))).delete()
 
         da.delete()
         dd.delete()
@@ -217,8 +215,8 @@ class Sentinel3Commands {
 
     @ShellMethod("Convert and merge multiple OLCI L2 marine products")
     fun olciMergeMarine(pattern: String,
-                      @ShellOption(defaultValue = "") outputOptions: String = "",
-                      @ShellOption(defaultValue = "false") force: Boolean = false) {
+                        @ShellOption(defaultValue = "") outputOptions: String = "",
+                        @ShellOption(defaultValue = "false") force: Boolean = false) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if (matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
@@ -291,14 +289,14 @@ class Sentinel3Commands {
         val pyLog = "np.round_(np.log10(np.nanmean(np.power(10,in_ar,dtype = 'float32'), axis = 0, dtype = 'float32'),dtype = 'float32'), decimals=5, out = out_ar)"
         val pyLin = "np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)"
 
-        createVRT("chl",pyLog)
-        createVRT("tsm",pyLog)
-        createVRT("kd9",pyLog)
-        createVRT("t86",pyLin)
-        createVRT("a86",pyLin)
-        createVRT("chn",pyLog)
-        createVRT("adg",pyLog)
-        createVRT("par",pyLin)
+        createVRT("chl", pyLog)
+        createVRT("tsm", pyLog)
+        createVRT("kd9", pyLog)
+        createVRT("t86", pyLin)
+        createVRT("a86", pyLin)
+        createVRT("chn", pyLog)
+        createVRT("adg", pyLog)
+        createVRT("par", pyLin)
 
         descCHL.delete()
         descTSM.delete()
@@ -363,8 +361,8 @@ class Sentinel3Commands {
 
     @ShellMethod("Convert and merge multiple OLCI L2 land products")
     fun olciMergeLand(pattern: String,
-                  @ShellOption(defaultValue = "") outputOptions: String = "",
-                  @ShellOption(defaultValue = "false") force: Boolean = false) {
+                      @ShellOption(defaultValue = "") outputOptions: String = "",
+                      @ShellOption(defaultValue = "false") force: Boolean = false) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
         if (matches.isEmpty()) {
             println(" * No product matches the pattern '$pattern'")
@@ -412,49 +410,49 @@ class Sentinel3Commands {
         gdal.Translate("merged_iwv.vrt", descIWV, TranslateOptions(gdal.ParseCommandLine("-of VRT")))
 
         var t = Files.readAllLines(Paths.get("merged_ogvi.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
+        for (i in 0..t.size) {
+            if (t[i].contains("<VRTRasterBand")) {
                 t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
+                t.add(i + 1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i + 2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i + 3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i + 4, "import numpy as np")
+                t.add(i + 5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i + 6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
+                t.add(i + 7, "]]>")
+                t.add(i + 8, "    </PixelFunctionCode>")
             }
         }
         Files.write(Paths.get("merged_ogvi.vrt"), t)
 
         t = Files.readAllLines(Paths.get("merged_otci.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
+        for (i in 0..t.size) {
+            if (t[i].contains("<VRTRasterBand")) {
                 t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
+                t.add(i + 1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i + 2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i + 3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i + 4, "import numpy as np")
+                t.add(i + 5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i + 6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
+                t.add(i + 7, "]]>")
+                t.add(i + 8, "    </PixelFunctionCode>")
             }
         }
         Files.write(Paths.get("merged_otci.vrt"), t)
 
         t = Files.readAllLines(Paths.get("merged_iwv.vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
+        for (i in 0..t.size) {
+            if (t[i].contains("<VRTRasterBand")) {
                 t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
-                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
+                t.add(i + 1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i + 2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i + 3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i + 4, "import numpy as np")
+                t.add(i + 5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i + 6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
+                t.add(i + 7, "]]>")
+                t.add(i + 8, "    </PixelFunctionCode>")
             }
         }
         Files.write(Paths.get("merged_iwv.vrt"), t)
@@ -543,12 +541,12 @@ class Sentinel3Commands {
                     }
                     !(x in 30..lstData.shape[1] - 30 || y in 30..lstData.shape[0] - 30) -> lstData[y, x] = Float.NaN  // stay away from borders
                     else -> {
-                        if(latData[y, x] > 85 || latData[y, x] < -85) {
+                        if (latData[y, x] > 85 || latData[y, x] < -85) {
                             lstAscending[y, x] = lstData[y, x]
                             lstDescending[y, x] = lstData[y, x]
-                        } else if(latData[y, x] - latData[Math.max(0, y - 2), x] >= 0)
+                        } else if (latData[y, x] - latData[Math.max(0, y - 2), x] >= 0)
                             lstAscending[y, x] = lstData[y, x]      // ascending
-                        else if(latData[y, x] - latData[Math.max(0, y - 2), x] <= 0 )
+                        else if (latData[y, x] - latData[Math.max(0, y - 2), x] <= 0)
                             lstDescending[y, x] = lstData[y, x]    // descending
                     }
                 }
@@ -673,7 +671,7 @@ class Sentinel3Commands {
 //            println(" * No product matches the pattern '$pattern'")
 //            return
 //        }
-        println("processing "+prod)
+        println("processing " + prod)
         val sstFile = NetcdfDataset.openDataset(prod)
 //        val sstFile = NetcdfDataset.openDataset("$prodName/"+prod)
 //        val sstFile = NetcdfDataset.openDataset("$prodName/geodetic_in.nc")
@@ -703,13 +701,13 @@ class Sentinel3Commands {
 //                    }
 //                    !(x in 30..lstData.shape[1] - 30 || y in 30..lstData.shape[0] - 30) -> lstData[y, x] = Float.NaN  // stay away from borders
 //                    else -> {
-                        if(latData[y, x] > 85 || latData[y, x] < -85) {
-                            sstAscending[y, x] = sstData[y, x].toFloat()
-                            sstDescending[y, x] = sstData[y, x].toFloat()
-                        } else if(latData[y, x] - latData[Math.max(0, y - 2), x] >= 0)
-                            sstAscending[y, x] = sstData[y, x].toFloat()      // ascending
-                        else if(latData[y, x] - latData[Math.max(0, y - 2), x] <= 0 )
-                            sstDescending[y, x] = sstData[y, x].toFloat()    // descending
+                if (latData[y, x] > 85 || latData[y, x] < -85) {
+                    sstAscending[y, x] = sstData[y, x].toFloat()
+                    sstDescending[y, x] = sstData[y, x].toFloat()
+                } else if (latData[y, x] - latData[Math.max(0, y - 2), x] >= 0)
+                    sstAscending[y, x] = sstData[y, x].toFloat()      // ascending
+                else if (latData[y, x] - latData[Math.max(0, y - 2), x] <= 0)
+                    sstDescending[y, x] = sstData[y, x].toFloat()    // descending
 //                    }
 //                }
 
@@ -816,14 +814,14 @@ class Sentinel3Commands {
     @ShellMethod("Convert OLCI land products")
 //    fun rebuildOLCI(prodName: String, shpFile: String) {
     fun rebuildOLCILand(prodName: String, force: Boolean = false) {
-      if (!force
+        if (!force
                 && Files.exists(Paths.get(prodName, "ogvi_lzw_rebuild.tif"))
                 && Files.size(Paths.get(prodName, "ogvi_lzw_rebuild.tif")) > 50000
                 && Files.exists(Paths.get(prodName, "otci_lzw_rebuild.tif"))
                 && Files.size(Paths.get(prodName, "otci_lzw_rebuild.tif")) > 50000
-               && Files.exists(Paths.get(prodName, "iwv_lzw_rebuild.tif"))
+                && Files.exists(Paths.get(prodName, "iwv_lzw_rebuild.tif"))
                 && Files.size(Paths.get(prodName, "iwv_lzw_rebuild.tif")) > 50000
-                ) return
+        ) return
         print(" * Converting $prodName... ")
         val ogviFile = NetcdfDataset.openDataset("$prodName/ogvi.nc")
         val otciFile = NetcdfDataset.openDataset("$prodName/otci.nc")
@@ -991,22 +989,22 @@ class Sentinel3Commands {
         Runtime.getRuntime().exec(commandIWV)
 
 
-        var delete ="rm -rf $prodName/reformatted_otci.nc"
+        var delete = "rm -rf $prodName/reformatted_otci.nc"
         println(delete)
         Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_ogvi.nc"
+        delete = "rm -rf $prodName/reformatted_ogvi.nc"
         println(delete)
         Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/reformatted_iwv.nc"
+        delete = "rm -rf $prodName/reformatted_iwv.nc"
         println(delete)
         Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/otci_warp_rebuild.tif"
+        delete = "rm -rf $prodName/otci_warp_rebuild.tif"
         println(delete)
         Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/ogvi_warp_rebuild.tif"
+        delete = "rm -rf $prodName/ogvi_warp_rebuild.tif"
         println(delete)
         Runtime.getRuntime().exec(delete)
-        delete ="rm -rf $prodName/iwv_warp_rebuild.tif"
+        delete = "rm -rf $prodName/iwv_warp_rebuild.tif"
         println(delete)
         Runtime.getRuntime().exec(delete)
 
@@ -1033,7 +1031,7 @@ class Sentinel3Commands {
                 && Files.size(Paths.get(prodName, "par_lzw_rebuild.tif")) > 50000
                 && Files.exists(Paths.get(prodName, "a86_lzw_rebuild.tif"))
                 && Files.size(Paths.get(prodName, "a86_lzw_rebuild.tif")) > 50000
-                ) return
+        ) return
 
         print(" * Converting $prodName... ")
 
@@ -1063,14 +1061,14 @@ class Sentinel3Commands {
 
         val dimensions = chlFile.findVariable("CHL_OC4ME").dimensions
 
-        maskSunglint(chlData,flag)
-        maskSunglint(tsmData,flag)
-        maskSunglint(kd9Data,flag)
-        maskSunglint(t86Data,flag)
-        maskSunglint(a86Data,flag)
-        maskSunglint(chnData,flag)
-        maskSunglint(adgData,flag)
-        maskSunglint(parData,flag)
+        maskSunglint(chlData, flag)
+        maskSunglint(tsmData, flag)
+        maskSunglint(kd9Data, flag)
+        maskSunglint(t86Data, flag)
+        maskSunglint(a86Data, flag)
+        maskSunglint(chnData, flag)
+        maskSunglint(adgData, flag)
+        maskSunglint(parData, flag)
 
         val writerCHL = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_chl.nc")
         val writerTSM = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_tsm.nc")
@@ -1081,14 +1079,14 @@ class Sentinel3Commands {
         val writerADG = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_adg.nc")
         val writerPAR = NetcdfFileWriter.createNew(NetcdfFileWriter.Version.netcdf3, "$prodName/reformatted_par.nc")
 
-        val newDimensionsCHL = getDimension(writerCHL,dimensions)
-        val newDimensionsTSM = getDimension(writerTSM,dimensions)
-        val newDimensionsKD9 = getDimension(writerKD9,dimensions)
-        val newDimensionsT86 = getDimension(writerT86,dimensions)
-        val newDimensionsA86 = getDimension(writerA86,dimensions)
-        val newDimensionsCHN = getDimension(writerCHN,dimensions)
-        val newDimensionsADG = getDimension(writerADG,dimensions)
-        val newDimensionsPAR = getDimension(writerPAR,dimensions)
+        val newDimensionsCHL = getDimension(writerCHL, dimensions)
+        val newDimensionsTSM = getDimension(writerTSM, dimensions)
+        val newDimensionsKD9 = getDimension(writerKD9, dimensions)
+        val newDimensionsT86 = getDimension(writerT86, dimensions)
+        val newDimensionsA86 = getDimension(writerA86, dimensions)
+        val newDimensionsCHN = getDimension(writerCHN, dimensions)
+        val newDimensionsADG = getDimension(writerADG, dimensions)
+        val newDimensionsPAR = getDimension(writerPAR, dimensions)
 
         // populate
         val chl = writerCHL.addVariable(null, "chl", DataType.FLOAT, newDimensionsCHL)
@@ -1125,14 +1123,14 @@ class Sentinel3Commands {
         par.addAttribute(Attribute("_FillValue", "nan"))
 
         // create the file
-        createNetcdf(writerCHL,chl,chlData,geodeticFile,newDimensionsCHL,latData,lonData)
-        createNetcdf(writerTSM,tsm,tsmData,geodeticFile,newDimensionsTSM,latData,lonData)
-        createNetcdf(writerKD9,kd9,kd9Data,geodeticFile,newDimensionsKD9,latData,lonData)
-        createNetcdf(writerT86,t86,t86Data,geodeticFile,newDimensionsT86,latData,lonData)
-        createNetcdf(writerA86,a86,a86Data,geodeticFile,newDimensionsA86,latData,lonData)
-        createNetcdf(writerCHN,chn,chnData,geodeticFile,newDimensionsCHN,latData,lonData)
-        createNetcdf(writerADG,adg,adgData,geodeticFile,newDimensionsADG,latData,lonData)
-        createNetcdf(writerPAR,par,parData,geodeticFile,newDimensionsPAR,latData,lonData)
+        createNetcdf(writerCHL, chl, chlData, geodeticFile, newDimensionsCHL, latData, lonData)
+        createNetcdf(writerTSM, tsm, tsmData, geodeticFile, newDimensionsTSM, latData, lonData)
+        createNetcdf(writerKD9, kd9, kd9Data, geodeticFile, newDimensionsKD9, latData, lonData)
+        createNetcdf(writerT86, t86, t86Data, geodeticFile, newDimensionsT86, latData, lonData)
+        createNetcdf(writerA86, a86, a86Data, geodeticFile, newDimensionsA86, latData, lonData)
+        createNetcdf(writerCHN, chn, chnData, geodeticFile, newDimensionsCHN, latData, lonData)
+        createNetcdf(writerADG, adg, adgData, geodeticFile, newDimensionsADG, latData, lonData)
+        createNetcdf(writerPAR, par, parData, geodeticFile, newDimensionsPAR, latData, lonData)
 
         flags.close()
         geodeticFile.close()
@@ -1214,14 +1212,14 @@ class Sentinel3Commands {
         adgDTS.SetMetadata(Hashtable(mapADG), "GEOLOCATION")
         parDTS.SetMetadata(Hashtable(mapPAR), "GEOLOCATION")
 
-        createTiff(prodName,"chl",chlDTS)
-        createTiff(prodName,"tsm",tsmDTS)
-        createTiff(prodName,"kd9",kd9DTS)
-        createTiff(prodName,"t86",t86DTS)
-        createTiff(prodName,"a86",a86DTS)
-        createTiff(prodName,"chn",chnDTS)
-        createTiff(prodName,"adg",adgDTS)
-        createTiff(prodName,"par",parDTS)
+        createTiff(prodName, "chl", chlDTS)
+        createTiff(prodName, "tsm", tsmDTS)
+        createTiff(prodName, "kd9", kd9DTS)
+        createTiff(prodName, "t86", t86DTS)
+        createTiff(prodName, "a86", a86DTS)
+        createTiff(prodName, "chn", chnDTS)
+        createTiff(prodName, "adg", adgDTS)
+        createTiff(prodName, "par", parDTS)
 
         Files.delete(Paths.get("$prodName/reformatted_chl.nc"))
         Files.delete(Paths.get("$prodName/reformatted_tsm.nc"))
@@ -1263,15 +1261,15 @@ class Sentinel3Commands {
         println("done")
     }
 
-    fun logToLinear (array: ArrayFloat.D2):ArrayFloat.D2{
+    fun logToLinear(array: ArrayFloat.D2): ArrayFloat.D2 {
         val converted = ArrayFloat.D2(array.shape[0], array.shape[1])
         for (y in 0 until array.shape[0])
             for (x in 0 until array.shape[1])
-                converted[y,x] = Math.pow(10.0,array[y, x].toDouble()).toFloat()
+                converted[y, x] = Math.pow(10.0, array[y, x].toDouble()).toFloat()
         return converted
     }
 
-    fun maskSunglint (input: ArrayFloat.D2, flags: ArrayLong.D2){
+    fun maskSunglint(input: ArrayFloat.D2, flags: ArrayLong.D2) {
         for (y in 0 until input.shape[0])
             for (x in 0 until input.shape[1])
                 when {
@@ -1281,7 +1279,7 @@ class Sentinel3Commands {
                 }
     }
 
-    fun getDimension (writer: NetcdfFileWriter, dim: MutableList<Dimension>):MutableList<Dimension>{
+    fun getDimension(writer: NetcdfFileWriter, dim: MutableList<Dimension>): MutableList<Dimension> {
         val newDimensions = mutableListOf<Dimension>(
                 writer.addDimension(null, dim[0].fullName, dim[0].length),
                 writer.addDimension(null, dim[1].fullName, dim[1].length)
@@ -1289,7 +1287,7 @@ class Sentinel3Commands {
         return newDimensions
     }
 
-    fun createNetcdf(writer: NetcdfFileWriter, varbl: Variable, data: ArrayFloat.D2, geodetic: NetcdfDataset, dim: MutableList<Dimension>, ltData: ArrayDouble.D2, lnData:ArrayDouble.D2){
+    fun createNetcdf(writer: NetcdfFileWriter, varbl: Variable, data: ArrayFloat.D2, geodetic: NetcdfDataset, dim: MutableList<Dimension>, ltData: ArrayDouble.D2, lnData: ArrayDouble.D2) {
 
         val lt = writer.addVariable(null, "lat", DataType.DOUBLE, dim)
         lt.addAll(geodetic.findVariable("latitude").attributes)
@@ -1312,13 +1310,13 @@ class Sentinel3Commands {
 
     }
 
-    fun createTiff (prodName: String, outputPattern: String, dts: Dataset){
+    fun createTiff(prodName: String, outputPattern: String, dts: Dataset) {
 
-        val ris = gdal.Warp("$prodName/"+outputPattern+"_warp_rebuild.tif", arrayOf(dts), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
+        val ris = gdal.Warp("$prodName/" + outputPattern + "_warp_rebuild.tif", arrayOf(dts), WarpOptions(gdal.ParseCommandLine("-geoloc -oo COMPRESS=LZW -srcnodata 0 -dstnodata nan")))
         dts.delete()
         ris.delete()
 
-        var command = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/"+outputPattern+"_warp_rebuild.tif $prodName/"+outputPattern+"_lzw_rebuild.tif"
+        var command = "gdal_translate -co COMPRESS=LZW -a_srs EPSG:4326 $prodName/" + outputPattern + "_warp_rebuild.tif $prodName/" + outputPattern + "_lzw_rebuild.tif"
         println(command)
         Runtime.getRuntime().exec(command)
 
@@ -1326,26 +1324,26 @@ class Sentinel3Commands {
 
     }
 
-    fun createVRT (outputPattern: String, pythonFunction: String){
+    fun createVRT(outputPattern: String, pythonFunction: String) {
 
-        var t = Files.readAllLines(Paths.get("merged_"+outputPattern+".vrt"))
-        for(i in 0..t.size) {
-            if(t[i].contains("<VRTRasterBand")) {
+        var t = Files.readAllLines(Paths.get("merged_" + outputPattern + ".vrt"))
+        for (i in 0..t.size) {
+            if (t[i].contains("<VRTRasterBand")) {
                 t[i] = t[i].replace("<VRTRasterBand", "<VRTRasterBand subClass=\"VRTDerivedRasterBand\"")
-                t.add(i+1, "    <PixelFunctionType>add</PixelFunctionType>")
-                t.add(i+2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
-                t.add(i+3, "    <PixelFunctionCode><![CDATA[")
-                t.add(i+4, "import numpy as np")
-                t.add(i+5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
+                t.add(i + 1, "    <PixelFunctionType>add</PixelFunctionType>")
+                t.add(i + 2, "    <PixelFunctionLanguage>Python</PixelFunctionLanguage>")
+                t.add(i + 3, "    <PixelFunctionCode><![CDATA[")
+                t.add(i + 4, "import numpy as np")
+                t.add(i + 5, "def add(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize, raster_ysize, buf_radius, gt, **kwargs):")
 //                t.add(i+6, "    np.round_(np.nanmean(in_ar, axis = 0, dtype = 'float32'), decimals=5, out = out_ar)")
 //                t.add(i+6, "    np.round_(np.nanmean(np.power(10,in_ar,dtype = 'float32'),dtype = 'float32', axis = 0), decimals=5, out = out_ar)")
 //                t.add(i+6, "    np.round_(np.log10(np.nanmean(np.power(10,in_ar,dtype = 'float32'), axis = 0, dtype = 'float32'),dtype = 'float32'), decimals=5, out = out_ar)")
-                t.add(i+6, "    "+pythonFunction)
-                t.add(i+7, "]]>")
-                t.add(i+8, "    </PixelFunctionCode>")
+                t.add(i + 6, "    " + pythonFunction)
+                t.add(i + 7, "]]>")
+                t.add(i + 8, "    </PixelFunctionCode>")
             }
         }
-        Files.write(Paths.get("merged_"+outputPattern+".vrt"), t)
+        Files.write(Paths.get("merged_" + outputPattern + ".vrt"), t)
 
     }
 

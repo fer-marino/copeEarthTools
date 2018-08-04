@@ -184,12 +184,12 @@ class Sentinel3Processor {
         for (w in 0 until width - 1)
             for (h in 0 until height - 1) {
 //                if(aIn[h, w] != nan) {
-                    val toInt = Math.min(255, (aIn[h, w] * scaleFactor).toInt())
+                val toInt = Math.min(255, (aIn[h, w] * scaleFactor).toInt())
 //                    println(aIn[h, w])
 //                    println(aIn[h, w].toInt())
 //                    val toInt = aIn[h, w].toInt()
-                    val c = Color(toInt, toInt, toInt)
-                    im.setRGB(w, h, c.rgb)
+                val c = Color(toInt, toInt, toInt)
+                im.setRGB(w, h, c.rgb)
 //                } else
 //                    im.setRGB(w, h, Color(0, 0, 0, 1).rgb)
             }

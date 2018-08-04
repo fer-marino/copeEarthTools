@@ -8,18 +8,16 @@ import org.springframework.boot.runApplication
 
 @SpringBootApplication
 @EnableConfigurationProperties(DataHubConfiguration::class)
-open class Shell
+open class EsbTools
 
 fun main(args: Array<String>) {
     try {
         gdal.AllRegister()
         println(" Loaded ${gdal.GetDriverCount()} GDAL drivers")
 //        gdal.PushErrorHandler("CPLQuietErrorHandler")
-        runApplication<Shell>(*args)
+        runApplication<EsbTools>(*args)
     } catch (e: UnsatisfiedLinkError) {
         println("Library path: \n\t - " + System.getProperty("java.library.path").replace(";", "\n\t - "))
         error(" ${e.message}")
     }
-
-
 }

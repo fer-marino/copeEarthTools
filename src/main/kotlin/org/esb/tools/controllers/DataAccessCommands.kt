@@ -10,7 +10,6 @@ import org.esb.tools.model.Product
 import org.jline.utils.AttributedString
 import org.jline.utils.AttributedStyle
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.web.client.RestTemplateBuilder
 import org.springframework.context.annotation.Bean
 import org.springframework.http.HttpEntity
@@ -30,15 +29,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.util.*
-import java.util.concurrent.*
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.zip.ZipInputStream
-import javax.annotation.PostConstruct
-import kotlin.properties.Delegates
 
 @ShellComponent
-class DhusCommands {
+class DataAccessCommands {
     @Autowired
     lateinit var restTemplateBuilder: RestTemplateBuilder
     @Autowired
@@ -49,9 +44,6 @@ class DhusCommands {
     fun myPromptProvider(): PromptProvider = PromptProvider {
         AttributedString("esb:>", AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
     }
-
-    @Value("\${dhus.url:https://scihub.copernicus.eu/s3}")
-    private lateinit var dhusUrl: String
 
     @ShellMethod("Change selected DataHub instance")
     fun selectHub(id: String) {
@@ -67,13 +59,81 @@ class DhusCommands {
         println(" ** Available hubs are ${dataHubConfiguration.hubs.map { it.id }.reduceRight { s, acc -> (if (s == selectedHub?.id) "[$s]" else s) + ", $acc" }} ")
     }
 
-    @ShellMethod("Query Copernicus open hub on Open Sarch API and download all the results")
-    fun searchOSearch(
-            @ShellOption(defaultValue = "producttype:SL_2_LST___ AND timeliness:\"Near Real Time\"") filter: String,
+    @ShellMethod("Query Serco Dias catalogue and download all the results")
+    fun ondaSearch(
+            @ShellOption(defaultValue = "*") filter: String,
             @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
             @ShellOption(defaultValue = "") destination: String
     ): List<String> {
-        if(selectedHub == null) {
+        if (selectedHub == null) {
+            println(" **** No hub selected. Select an hub first")
+            return listOf()
+        }
+
+        var skip = 0
+        val pageSize = 100
+        val out = mutableListOf<String>()
+
+        val downloader = Downloader(2)
+        val hub = selectedHub!!
+
+        val tpl = restTemplateBuilder.basicAuthorization(hub.username, hub.password).build()
+        try {
+            do {
+                val start = System.currentTimeMillis()
+                val headers = HttpHeaders()
+                headers.accept = listOf(MediaType.APPLICATION_JSON)
+                val entity = HttpEntity("parameters", headers)
+                val query = "${hub.url}/Products?\$search=\"$filter\"&\$skip=$skip&\$top=$pageSize&\$format=json"
+                if (skip == 0)
+                    println(" * Running query $query")
+                else
+                    print("\r * Requesting page ${skip / pageSize + 1} " +
+                            "                                                                                                                 ")
+                val response = tpl.exchange(query, HttpMethod.GET, entity, Map::class.java)
+                val feed = response.body!!["value"] as List<Map<String, Any>>
+
+                if (skip == 0)
+                    println(" * Returned lots of products in ${System.currentTimeMillis() - start}msec")
+                var skipCount = 0
+                for (entry in feed) {
+                    if (!(Files.exists(Paths.get(destination)) && Files.list(Paths.get(destination)).map { it.toString() }.anyMatch { it.contains(entry["title"].toString()) })) {
+                        if (skipCount != 0 && skipCount != 100) {
+                            println(" * Skipped $skipCount products as already downloaded")
+                            skipCount = 0
+                        }
+                        if (destination.isNotEmpty())
+                            downloader.download(Product(entry["id"].toString(), entry["name"].toString(), destination, 0, hub))
+                        else
+                            println(" ** ${entry["title"]}")
+                    } else
+                        skipCount++
+
+                    out.add(entry["title"].toString())
+                }
+
+                if (skipCount != 0) println(" * Skipped $skipCount products as already downloaded")
+
+                skip += pageSize
+                if (feed.size < 100) break
+            } while (true)
+        } catch (e: HttpStatusCodeException) {
+            println("HTTP Error (${e.statusCode}): ${e.message}")
+            println(e.responseBodyAsString)
+        }
+
+        while (downloader.isActive()) Thread.sleep(2000)
+
+        return out
+    }
+
+    @ShellMethod("Query Copernicus open hub on Open Sarch API and download all the results")
+    fun oSearch(
+            @ShellOption(defaultValue = "*") filter: String,
+            @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
+            @ShellOption(defaultValue = "") destination: String
+    ): List<String> {
+        if (selectedHub == null) {
             println(" **** No hub selected. Select an hub first")
             return listOf()
         }
@@ -93,11 +153,12 @@ class DhusCommands {
                 val headers = HttpHeaders()
                 headers.accept = listOf(MediaType.APPLICATION_JSON)
                 val entity = HttpEntity("parameters", headers)
-                val query = "$dhusUrl/search?start=$skip&rows=$pageSize&orderby=$orderBy&format=json&q=$filter"
+                val query = "${hub.url}/search?start=$skip&rows=$pageSize&orderby=$orderBy&format=json&q=$filter"
                 if (skip == 0)
                     println(" * Running query $query")
                 else if (skip < totalProduct)
-                    println(" * Requesting page ${skip / pageSize + 1} of ${totalProduct / pageSize + 1}")
+                    print("\r * Requesting page ${skip / pageSize + 1} of ${totalProduct / pageSize + 1} " +
+                            "                                                                                                                 ")
                 val response = tpl.exchange(query, HttpMethod.GET, entity, Map::class.java)
                 val feed = response.body!!["feed"] as Map<String, Any>
 
@@ -108,8 +169,8 @@ class DhusCommands {
                 if (feed.containsKey("entry")) {
                     for (entry in feed["entry"] as List<Map<String, Any>>) {
                         if (!(Files.exists(Paths.get(destination)) && Files.list(Paths.get(destination)).map { it.toString() }.anyMatch { it.contains(entry["title"].toString()) })) {
-                            if (skipCount != 0) {
-                                println(" * Skipped $skipCount products as already downloaded")
+                            if (skipCount != 0 && skipCount != 100) {
+                                println("\r * Skipped $skipCount products as already downloaded")
                                 skipCount = 0
                             }
                             if (destination.isNotEmpty())
@@ -139,14 +200,12 @@ class DhusCommands {
     }
 
     @ShellMethod("Query Copernicus open hub on ODATA API and download all the results")
-    fun searchOdata(
-            @ShellOption(defaultValue = "test") username: String,
-            @ShellOption(defaultValue = "test") password: String,
+    fun oData(
             @ShellOption(defaultValue = "substringof('SR_2_LAN', Name)") filter: String,
             @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
             @ShellOption(defaultValue = "download") destination: String
     ): List<String> {
-        if(selectedHub == null) {
+        if (selectedHub == null) {
             println(" **** No hub selected. Select an hub first")
             return listOf()
         }
@@ -156,9 +215,9 @@ class DhusCommands {
         val out = mutableListOf<String>()
 
         val downloader = Downloader(2)
-        val hub = DataHub(dhusUrl, dhusUrl, username, password)
+        val hub = selectedHub!!
 
-        val tpl = restTemplateBuilder.basicAuthorization(username, password).build()
+        val tpl = restTemplateBuilder.basicAuthorization(hub.username, hub.password).build()
 
         try {
             do {
@@ -166,7 +225,7 @@ class DhusCommands {
                 val headers = HttpHeaders()
                 headers.accept = listOf(MediaType.APPLICATION_JSON)
                 val entity = HttpEntity("parameters", headers)
-                val query = "$dhusUrl/odata/v1/Products?\$filter=$filter" +
+                val query = "${hub.url}/odata/v1/Products?\$filter=$filter" +
                         "&\$orderby=$orderBy&\$skip=$skip&\$top=$pageSize"
                 println(" * Running query $query")
                 val response = tpl.exchange(query, HttpMethod.GET, entity, ODataRoot::class.java)
@@ -197,30 +256,6 @@ class DhusCommands {
         }
 
         return out
-    }
-
-    @ShellMethod("Download a product component having id and product name")
-    fun downloadProduct(id: String, productName: String, username: String = "test", password: String = "test", destination: String = "download") {
-        val uc: HttpURLConnection = URL("$dhusUrl/odata/v1/Products('$id')/\$value").openConnection() as HttpURLConnection
-        val basicAuth = "Basic " + Base64Utils.encodeToString("$username:$password".toByteArray())
-        uc.setRequestProperty("Authorization", basicAuth)
-        val stream = CountingInputStream(uc.inputStream)
-
-        var complete = false
-        val start = System.currentTimeMillis()
-        Thread {
-            FileUtils.copyInputStreamToFile(stream, Paths.get(destination, "$productName.zip").toFile())
-            complete = true
-        }.start()
-
-        var prev: Long = 0
-        while (!complete) {
-            Thread.sleep(1000)
-            print("\r * Downloading $productName of size ${Utils.readableFileSize(uc.contentLengthLong)}: " +
-                    "${Math.round(stream.byteCount * 1000f / uc.contentLengthLong) / 10f}% (${Utils.readableFileSize(stream.byteCount - prev)}/sec)")
-            prev = stream.byteCount
-        }
-        println("\r * Download of $productName of size ${Utils.readableFileSize(prev)} finished in ${(System.currentTimeMillis() - start) / 1000} seconds")
     }
 
     @ShellMethod("Unzip product")
@@ -283,17 +318,14 @@ class DhusCommands {
 
             // status update
             Thread {
-                var sleep = false
+                var sleep: Boolean
                 while (true) {
                     sleep = false
                     activeDownloads.forEachIndexed { i, it ->
                         print("\r * [${queue.size} ${i + 1}] $it")
-                        Thread.sleep(1500)
+                        Thread.sleep(2000)
                         sleep = true
                     }
-
-                    if (!sleep)
-                        Thread.sleep(2000)
                 }
             }.start()
         }
@@ -305,14 +337,20 @@ class DhusCommands {
         private var completed = false
 
         init {
+            val uc: HttpURLConnection = if (product.hub.id.toLowerCase().contains("dias"))
+                URL("${product.hub.url}/Products(${product.id})/\$value").openConnection() as HttpURLConnection
+            else
+                URL("${product.hub.url}/odata/v1/Products('${product.id}')/\$value").openConnection() as HttpURLConnection
             try {
-                val uc: HttpURLConnection = URL("${product.hub.url}/odata/v1/Products('${product.id}')/\$value").openConnection() as HttpURLConnection
                 val basicAuth = "Basic " + Base64Utils.encodeToString("${product.hub.username}:${product.hub.password}".toByteArray())
                 uc.setRequestProperty("Authorization", basicAuth)
+                uc.setRequestProperty("Accept-Encoding", "gzip, deflate, br")
+                uc.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                product.name = uc.headerFields["Content-Disposition"]?.first()?.substringAfter("filename=")?.replace("\"", "") ?: product.name
                 stream = CountingInputStream(uc.inputStream)
                 product.size = uc.contentLengthLong
             } catch (e: Exception) {
-                println("Error while establishing download connection for product ${product.name}: ${e.message}")
+                println(" ** Error while establishing download connection for product ${product.name}: ${e.message} ")
                 stream = CountingInputStream(null)
                 completed = true
             }
@@ -326,33 +364,37 @@ class DhusCommands {
         }
 
         fun download() {
+            if (completed) return
             Thread {
                 try {
                     val start = System.currentTimeMillis()
-                    FileUtils.copyInputStreamToFile(stream, Paths.get(product.destination, "${product.name}.zip").toFile())
+                    FileUtils.copyInputStreamToFile(stream, Paths.get(product.destination, product.name).toFile())
 
-                    val buffer = ByteArray(1024)
-                    val zis = ZipInputStream(FileInputStream("${product.destination}/${product.name}.zip"))
-                    var zipEntry = zis.nextEntry
-                    while (zipEntry != null) {
-                        if (zipEntry.isDirectory && !Files.exists(Paths.get("${product.destination}/${zipEntry.name}"))) {
-                            Files.createDirectories(Paths.get("${product.destination}/${zipEntry.name}"))
-                        } else {
-                            val fos = FileOutputStream(File("${product.destination}/${zipEntry.name}"))
-                            var len: Int = zis.read(buffer)
-                            while (len > 0) {
-                                fos.write(buffer, 0, len)
-                                len = zis.read(buffer)
+                    // unzip
+                    if (product.name.endsWith(".zip")) {
+                        val buffer = ByteArray(1024)
+                        val zis = ZipInputStream(FileInputStream(Paths.get(product.destination, product.name).toFile()))
+                        var zipEntry = zis.nextEntry
+                        while (zipEntry != null) {
+                            if (zipEntry.isDirectory && !Files.exists(Paths.get("${product.destination}/${zipEntry.name}"))) {
+                                Files.createDirectories(Paths.get("${product.destination}/${zipEntry.name}"))
+                            } else {
+                                val fos = FileOutputStream(File("${product.destination}/${zipEntry.name}"))
+                                var len: Int = zis.read(buffer)
+                                while (len > 0) {
+                                    fos.write(buffer, 0, len)
+                                    len = zis.read(buffer)
+                                }
+                                fos.close()
                             }
-                            fos.close()
+                            zipEntry = zis.nextEntry
                         }
-                        zipEntry = zis.nextEntry
-                    }
-                    zis.closeEntry()
-                    zis.close()
+                        zis.closeEntry()
+                        zis.close()
 
-                    Files.delete(Paths.get("${product.destination}/${product.name}.zip"))
-                    println("\t ** Download of ${product.name} successfully completed in ${(System.currentTimeMillis() - start) / 1000} seconds")
+                        Files.delete(Paths.get("${product.destination}/${product.name}"))
+                    }
+//                    println("\r ** Download of ${product.name} successfully completed in ${(System.currentTimeMillis() - start) / 1000} seconds                                        ")
                 } catch (e: Exception) {
                     println("An error occurred during download of ${product.name}: ${e.message}")
                 } finally {

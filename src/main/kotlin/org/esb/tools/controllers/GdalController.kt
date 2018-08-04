@@ -18,7 +18,7 @@ class GdalController {
         gdal.PushErrorHandler("CPLQuietErrorHandler")
     }
 
-    @ShellMethod
+    @ShellMethod("Enable gdal error reporting")
     fun enableGdalErrors() {
         gdal.PushErrorHandler("CPLQuietErrorHandler")
         TODO("Not implemented yet")
