@@ -24,7 +24,7 @@ datahub:
 geoserver:
   baseUrl: "http://51.38.225.223/geoserver/"
   username: "admin"
-  password: "S3_supp0rt"
+  password: "password"
   workspace: "esb"
 
 #debug: true
