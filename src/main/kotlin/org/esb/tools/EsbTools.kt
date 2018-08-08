@@ -13,7 +13,6 @@ open class EsbTools
 fun main(args: Array<String>) {
     try {
         gdal.AllRegister()
-        println(" Loaded ${gdal.GetDriverCount()} GDAL drivers")
 //        gdal.PushErrorHandler("CPLQuietErrorHandler")
         runApplication<EsbTools>(*args)
     } catch (e: UnsatisfiedLinkError) {

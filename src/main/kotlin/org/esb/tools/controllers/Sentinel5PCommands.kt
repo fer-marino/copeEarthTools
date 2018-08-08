@@ -1,18 +1,16 @@
 package org.esb.tools.controllers
 
-import org.gdal.gdal.BuildVRTOptions
-import org.gdal.gdal.Dataset
-import org.gdal.gdal.WarpOptions
-import org.gdal.gdal.gdal
+import org.gdal.gdal.*
 import org.springframework.core.io.FileSystemResource
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
 import org.springframework.shell.standard.ShellOption
+import java.nio.file.Files
 import java.util.*
 
 @ShellComponent
-class Sentinel5PController {
+class Sentinel5PCommands {
     @ShellMethod("Merge S5P products")
     fun mergeNO2(pattern: String,
                  @ShellOption(defaultValue = "") outputOptions: String = "",
@@ -22,9 +20,11 @@ class Sentinel5PController {
 
         val start = System.currentTimeMillis()
         val products = mutableListOf<Dataset>()
-        matches.filter { it.isFile && it.filename?.matches(".*L2__NO2.*\\.nc$".toRegex()) ?: false }.parallelStream().forEach {
+        // NOTE: do not parallelize. Apparently gdal open is NOT thread safe!
+        matches.filter { it.isFile && it.filename?.matches(".*L2__NO2.*\\.nc$".toRegex()) ?: false }.forEach { it ->
             // open
             val path = (it as FileSystemResource).path
+            print(" * * Processing $path... ")
             val adding = gdal.Open("HDF5:\"$path\"://PRODUCT/nitrogendioxide_tropospheric_column")
             val quality = gdal.Open("HDF5:\"$path\"://PRODUCT/qa_value")
 
@@ -34,11 +34,14 @@ class Sentinel5PController {
             quality.GetRasterBand(1).ReadRaster(0, 0, quality.rasterXSize, quality.rasterYSize, maskBuffer)
             adding.GetRasterBand(1).ReadRaster(0, 0, adding.rasterXSize, adding.rasterYSize, dataBuffer)
 
-            dataBuffer.forEachIndexed { i, _ -> if (maskBuffer[i] < 75) dataBuffer[i] = 0F }
+            dataBuffer.forEachIndexed { i, _ -> if (maskBuffer[i] < 75) dataBuffer[i] = 9.969209968386869E36F }
+            println(((dataBuffer.count { it != 9.969209968386869E36F } *100F) / dataBuffer.size).toString() + "% of valid pixels ")
 
-            adding.GetRasterBand(1).WriteRaster(0, 0, adding.rasterXSize, adding.rasterYSize, dataBuffer)
+            val copy = gdal.GetDriverByName("MEM").CreateCopy("copy", adding)
+            copy.GetRasterBand(1).WriteRaster(0, 0, adding.rasterXSize, adding.rasterYSize, dataBuffer)
 
             quality.delete()
+            adding.delete()
 
             // add georeferencing
             val mapA = mapOf(
@@ -47,13 +50,13 @@ class Sentinel5PController {
                     "X_BAND" to "1", "X_DATASET" to "HDF5:$path://PRODUCT/longitude",
                     "Y_BAND" to "1", "Y_DATASET" to "HDF5:$path://PRODUCT/latitude"
             )
-            adding.SetMetadata(Hashtable(mapA), "GEOLOCATION")
-            val ris = gdal.Warp("$path-warp.tif", arrayOf(adding),
-                    WarpOptions(gdal.ParseCommandLine("-srcnodata 9.969209968386869E36 -dstnodata 0 -t_srs EPSG:4326 -tr 0.02 0.02 -te -180 -85 180 85 " +
+            copy.SetMetadata(Hashtable(mapA), "GEOLOCATION")
+            val ris = gdal.Warp("$path-warp.tif", arrayOf(copy),
+                    WarpOptions(gdal.ParseCommandLine("-srcnodata 9.969209968386869E36 -dstnodata 0 " +
+                            "-t_srs EPSG:4326 -tr 0.02 0.02 -te -180 -85 180 85 " +
                             "-geoloc -oo COMPRESS=LZW -wo NUM_THREADS=val/ALL_CPUS -overwrite")))
-            adding.GetRasterBand(1).GetMaskBand()
-            // fixme synchronize add
             products.add(ris)
+            copy.delete()
         }
 
         if (products.isEmpty()) {
@@ -62,7 +65,8 @@ class Sentinel5PController {
         }
 
         println(" * Found ${products.size} products for pattern $pattern. Merging...")
-        val vrt = gdal.BuildVRT("no2-vrt-merge", products.toTypedArray(), BuildVRTOptions(gdal.ParseCommandLine("-resolution average -srcnodata 0 -vrtnodata 0")))
+        val vrt = gdal.BuildVRT("no2-vrt-merge", products.toTypedArray(),
+                BuildVRTOptions(gdal.ParseCommandLine("-resolution average -srcnodata 0 -vrtnodata 0")))
 
         val mosaic = gdal.Warp(destination, arrayOf(vrt),
                 WarpOptions(gdal.ParseCommandLine("-srcnodata 0 -dstnodata -1 -overwrite -wm 3000 -co COMPRESS=LZW -s_srs EPSG:4326 -wo NUM_THREADS=val/ALL_CPUS")))
@@ -71,13 +75,14 @@ class Sentinel5PController {
         vrt.delete()
 
 //        println(gdal.GDALInfo(mosaic, InfoOptions(gdal.ParseCommandLine("-hist"))))
-//
+
 //        println(" ** completed in ${(System.currentTimeMillis() - start) / 1000} seconds. Applying color map...")
-//        gdal.DEMProcessing("color-mosaic.tif", mosaic, "color-relief", "no2-color-map.txt", DEMProcessingOptions(gdal.ParseCommandLine("-alpha -co COMPRESS=JPEG"))).delete()
+//        gdal.DEMProcessing("color-mosaic.tif", mosaic, "color-relief", "no2-color-map.txt",
+//                DEMProcessingOptions(gdal.ParseCommandLine("-alpha -co COMPRESS=JPEG"))).delete()
 
         mosaic.delete()
 
-//        Files.list(matches.first().file.toPath().parent).filter { !it.endsWith("nc") }.forEach { Files.delete(it) }
+        Files.list(matches.first().file.toPath().parent).filter { !it.toString().endsWith("nc") }.forEach { Files.delete(it) }
 
         println(" ** DONE in ${(System.currentTimeMillis() - start) / 1000} seconds ")
     }

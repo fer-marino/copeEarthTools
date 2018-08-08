@@ -20,3 +20,11 @@ datahub:
       username: "s5pguest"
       password: "s5pguest"
   proxyUrl: "none"
+
+geoserver:
+  baseUrl: "http://51.38.225.223/geoserver/"
+  username: "admin"
+  password: "S3_supp0rt"
+  workspace: "esb"
+
+#debug: true

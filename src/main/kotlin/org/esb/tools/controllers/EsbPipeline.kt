@@ -1,10 +1,13 @@
 package org.esb.tools.controllers
 
+import org.apache.commons.io.FileUtils
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
 import org.springframework.shell.standard.ShellOption
-import java.time.DateTimeException
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -16,7 +19,7 @@ class EsbPipeline {
     @Autowired
     lateinit var sentinel1Commands: Sentinel1Commands
     @Autowired
-    lateinit var sentinel5Commands: Sentinel5PController
+    lateinit var sentinel5Commands: Sentinel5PCommands
     @Autowired
     lateinit var dataAccessCommands: DataAccessCommands
 
@@ -46,13 +49,29 @@ class EsbPipeline {
         while (startDate.isBefore(stopDate)) {
             // sample: S5P_OFFL_L2__NO2____20180709T000836_20180709T015006_03811_01_010002_20180715T020535.nc
             val id = startDate.format(DateTimeFormatter.BASIC_ISO_DATE)
-            sentinel5Commands.mergeNO2("$workingDir/s5p/no2/S5P_OFFL_L2__NO2____$id*", "", false, "$workingDir/s5p/no2-$id.tif")
-
-            try {
-                startDate = LocalDateTime.of(startDate.year, startDate.monthValue, startDate.dayOfMonth + 1, 0, 0)
-            } catch (e: DateTimeException) {
-                break
+            val mosaic = "$workingDir/s5p/no2-$id.tif"
+            if (Files.exists(Paths.get(mosaic))) {
+                startDate = startDate.plusDays(1)
+                continue
             }
+
+            val prev = startDate.minusDays(1)
+            val next = startDate.plusDays(1)
+            println(" ** Creating working dir for $id...")
+            val target = Paths.get("$workingDir/s5p/no2/$id/")
+            if (Files.exists(target))
+                FileUtils.deleteDirectory(target.toFile())
+            Files.createDirectories(target)
+            Files.list(Paths.get("$workingDir/s5p/no2/")).filter {
+                it.fileName.toString().contains("S5P_OFFL_L2__NO2____$id") ||
+                        it.fileName.toString().contains("S5P_OFFL_L2__NO2____${prev.format(DateTimeFormatter.BASIC_ISO_DATE)}") ||
+                        it.fileName.toString().contains("S5P_OFFL_L2__NO2____${next.format(DateTimeFormatter.BASIC_ISO_DATE)}")
+            }.forEach { Files.copy(it, target.resolve(it.fileName), StandardCopyOption.REPLACE_EXISTING) }
+
+
+            sentinel5Commands.mergeNO2("$workingDir/s5p/no2/$id/*", "", false, mosaic)
+
+            startDate = startDate.plusDays(1)
         }
 
     }

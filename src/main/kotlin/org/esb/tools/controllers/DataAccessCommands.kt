@@ -89,7 +89,7 @@ class DataAccessCommands {
                     println(" * Running query $query")
                 else
                     print("\r * Requesting page ${skip / pageSize + 1} " +
-                            "                                                                                                                 ")
+                            "                                                                                                                         ")
                 val response = tpl.exchange(query, HttpMethod.GET, entity, Map::class.java)
                 val feed = response.body!!["value"] as List<Map<String, Any>>
 
@@ -99,7 +99,7 @@ class DataAccessCommands {
                 for (entry in feed) {
                     if (!(Files.exists(Paths.get(destination)) && Files.list(Paths.get(destination)).map { it.toString() }.anyMatch { it.contains(entry["title"].toString()) })) {
                         if (skipCount != 0 && skipCount != 100) {
-                            println(" * Skipped $skipCount products as already downloaded")
+                            print("\r * Skipped $skipCount products as already downloaded")
                             skipCount = 0
                         }
                         if (destination.isNotEmpty())
@@ -112,7 +112,8 @@ class DataAccessCommands {
                     out.add(entry["title"].toString())
                 }
 
-                if (skipCount != 0) println(" * Skipped $skipCount products as already downloaded")
+                if (skipCount != 0 && skipCount != 100) print("\r * Skipped $skipCount products as already downloaded  "+
+                        "                                                                                                                         ")
 
                 skip += pageSize
                 if (feed.size < 100) break
@@ -147,6 +148,7 @@ class DataAccessCommands {
         val hub = selectedHub!!
 
         val tpl = restTemplateBuilder.basicAuthorization(hub.username, hub.password).build()
+        var skipCount = 0
         try {
             do {
                 val start = System.currentTimeMillis()
@@ -165,12 +167,11 @@ class DataAccessCommands {
                 if (skip == 0)
                     println(" * Returned ${feed["opensearch:totalResults"]} products in ${System.currentTimeMillis() - start}msec")
                 totalProduct = feed["opensearch:totalResults"].toString().toInt()
-                var skipCount = 0
                 if (feed.containsKey("entry")) {
                     for (entry in feed["entry"] as List<Map<String, Any>>) {
                         if (!(Files.exists(Paths.get(destination)) && Files.list(Paths.get(destination)).map { it.toString() }.anyMatch { it.contains(entry["title"].toString()) })) {
-                            if (skipCount != 0 && skipCount != 100) {
-                                println("\r * Skipped $skipCount products as already downloaded")
+                            if (skipCount != 0 && skipCount % 100 != 0) {
+                                println(" * Skipped $skipCount products as already downloaded                                 ")
                                 skipCount = 0
                             }
                             if (destination.isNotEmpty())
@@ -183,7 +184,7 @@ class DataAccessCommands {
                         out.add(entry["title"].toString())
                     }
 
-                    if (skipCount != 0) println(" * Skipped $skipCount products as already downloaded")
+                    if (skipCount != 0 && skipCount % 100 != 0) println(" * Skipped $skipCount products as already downloaded         ")
 
                     skip += pageSize
                 } else
@@ -358,7 +359,7 @@ class DataAccessCommands {
 
         override fun toString(): String {
             val out = "Downloading ${product.name} of size ${Utils.readableFileSize(product.size!!)}: " +
-                    "${Math.round(stream.byteCount * 1000f / product.size!!) / 10f}% (${Utils.readableFileSize(stream.byteCount - prevSize)}/sec)"
+                    "${Math.round(stream.byteCount * 1000f / product.size!!) / 10f}% (${Utils.readableFileSize(stream.byteCount - prevSize)}/sec)              "
             prevSize = stream.byteCount
             return out
         }
