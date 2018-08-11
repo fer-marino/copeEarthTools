@@ -4,14 +4,18 @@ import org.esb.tools.configuration.GeoserverConfiguration
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.web.client.RestTemplateBuilder
 import org.springframework.context.annotation.Bean
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver
+import org.springframework.http.HttpEntity
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
 import org.springframework.shell.standard.ShellOption
+import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.client.HttpServerErrorException
 import org.springframework.web.client.RestOperations
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.nio.file.attribute.PosixFilePermission
 import java.util.*
 
 
@@ -45,44 +49,38 @@ class GeoserverCommands {
             val ris = restTemplate.getForObject("${geoserverConfiguration.baseUrl}/rest/workspaces/${geoserverConfiguration.workspace}/coveragestores" +
                     "/$coverageStore/coverages/$coverageStore/index/granules.json?limit=$limit", FeatureCollection::class.java)
 
-            ris?.features?.forEachIndexed { i, it ->
-                println(" * [$i] $it")
-            }
+            ris?.features?.forEachIndexed { i, it -> println(" * [$i] $it") }
         } catch (e: HttpServerErrorException) {
             println(" * Error during granule list: ${e.message} \n\t ${e.responseBodyAsString}")
         }
     }
 
     @ShellMethod("Add a granule pattern to an existing coverage store. The granulePattern shall be located in the geoserver filesystem")
-    fun addGranule(@ShellOption("The granule path to upload. Can be an ant pattern") granulePattern: String, coverageStore: String) {
-        val matches = PathMatchingResourcePatternResolver().getResources("file:$granulePattern")
-        matches.map { it.file.toPath().toAbsolutePath() }.forEachIndexed { i, g ->
-            try {
-                println(" * [${i + 1}/${matches.size}] Adding $g ...")
+    fun addGranule(coverageStore: String) {
+        try {
+            println(" * Refreshing coverage store $coverageStore ...")
 
-                val path = Paths.get("/data/geoserver/$coverageStore")
-                if (!Files.exists(path)) {
-                    println(" * ERROR: coverage folder store folder does not exist: $path")
-                }
-
-                val destination = path.resolve(g.fileName)
-                if (!Files.exists(destination)) {
-                    Files.move(g, destination)
-                    val ris = restTemplate.postForObject("${geoserverConfiguration.baseUrl}/rest/workspaces/" +
-                            "${geoserverConfiguration.workspace}/coveragestores/$coverageStore/external.imagemosaic",
-                            destination.toString(), FeatureCollection::class.java, mapOf("Content-type" to "text"))
-                    println(ris)
-                }
-            } catch (e: HttpServerErrorException) {
-                println(" * Error during granule add: ${e.message} \n\t ${e.responseBodyAsString}")
-
+            val coverageStoreFolder = Paths.get("/data/geoserver/$coverageStore")
+            if (!Files.exists(coverageStoreFolder)) {
+                println(" * ERROR: coverage folder store folder does not exist: $coverageStoreFolder")
             }
+
+            val headers = LinkedMultiValueMap<String, String>()
+            headers.add(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN.toString())
+            val request = HttpEntity(coverageStoreFolder.toUri().toString(), headers)
+            println("Request " + request.toString())
+            val ris = restTemplate.postForEntity("${geoserverConfiguration.baseUrl}/rest/workspaces/" +
+                    "${geoserverConfiguration.workspace}/coveragestores/$coverageStore/external.imagemosaic",
+                    request, FeatureCollection::class.java)
+            println(ris)
+        } catch (e: HttpServerErrorException) {
+            println(" * Error during granule add: ${e.message} \n\t ${e.responseBodyAsString}")
         }
         println(" * All granules added")
     }
 
     @ShellMethod("Delete a granule from a coverage store")
-    fun removeGranule(coverageStore: String, @ShellOption("The granule id to remove. Use *list-granules* to look for IDs") granule: String) {
+    fun removeGranule(coverageStore: String, @ShellOption(help = "The granule id to remove. Use *list-granules* to look for IDs") granule: String) {
         val ris = restTemplate.getForObject("${geoserverConfiguration.baseUrl}/rest/workspaces/" +
                 "${geoserverConfiguration.workspace}/coveragestores/$coverageStore/" +
                 "coverages/$coverageStore/index/granule/$granule.json", FeatureCollection::class.java)
@@ -122,4 +120,4 @@ data class FeatureCollection(var bbox: DoubleArray, var crs: Any, var features: 
     }
 }
 
-data class Feature(var id: String,  var properties: Map<String, String>, var geometry: Any)
+data class Feature(var id: String, var properties: Map<String, String>, var geometry: Any)

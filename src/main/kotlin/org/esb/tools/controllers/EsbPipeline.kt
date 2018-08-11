@@ -55,21 +55,7 @@ class EsbPipeline {
                 continue
             }
 
-            val prev = startDate.minusDays(1)
-            val next = startDate.plusDays(1)
-            println(" ** Creating working dir for $id...")
-            val target = Paths.get("$workingDir/s5p/no2/$id/")
-            if (Files.exists(target))
-                FileUtils.deleteDirectory(target.toFile())
-            Files.createDirectories(target)
-            Files.list(Paths.get("$workingDir/s5p/no2/")).filter {
-                it.fileName.toString().contains("S5P_OFFL_L2__NO2____$id") ||
-                        it.fileName.toString().contains("S5P_OFFL_L2__NO2____${prev.format(DateTimeFormatter.BASIC_ISO_DATE)}") ||
-                        it.fileName.toString().contains("S5P_OFFL_L2__NO2____${next.format(DateTimeFormatter.BASIC_ISO_DATE)}")
-            }.forEach { Files.copy(it, target.resolve(it.fileName), StandardCopyOption.REPLACE_EXISTING) }
-
-
-            sentinel5Commands.mergeNO2("$workingDir/s5p/no2/$id/*", "", false, mosaic)
+            sentinel5Commands.mergeNO2("$workingDir/s5p/no2/S5P_OFFL_L2__NO2____$id*", "", false, 50,  mosaic)
 
             startDate = startDate.plusDays(1)
         }

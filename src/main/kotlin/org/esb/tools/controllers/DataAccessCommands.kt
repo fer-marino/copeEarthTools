@@ -171,7 +171,7 @@ class DataAccessCommands {
                     for (entry in feed["entry"] as List<Map<String, Any>>) {
                         if (!(Files.exists(Paths.get(destination)) && Files.list(Paths.get(destination)).map { it.toString() }.anyMatch { it.contains(entry["title"].toString()) })) {
                             if (skipCount != 0 && skipCount % 100 != 0) {
-                                println(" * Skipped $skipCount products as already downloaded                                 ")
+                                print("\r * Skipped $skipCount products as already downloaded                                                                                                                          ")
                                 skipCount = 0
                             }
                             if (destination.isNotEmpty())
@@ -184,7 +184,7 @@ class DataAccessCommands {
                         out.add(entry["title"].toString())
                     }
 
-                    if (skipCount != 0 && skipCount % 100 != 0) println(" * Skipped $skipCount products as already downloaded         ")
+                    if (skipCount != 0 && skipCount % 100 != 0) print("\r * Skipped $skipCount products as already downloaded                                                                                          ")
 
                     skip += pageSize
                 } else

@@ -15,6 +15,7 @@ class Sentinel5PCommands {
     fun mergeNO2(pattern: String,
                  @ShellOption(defaultValue = "") outputOptions: String = "",
                  @ShellOption(defaultValue = "false") force: Boolean = false,
+                 @ShellOption(defaultValue = "50") qualityThreshold:  Int = 50,
                  @ShellOption(defaultValue = "mosaic-no2.tif") destination: String) {
         val matches = PathMatchingResourcePatternResolver().getResources("file:$pattern")
 
@@ -34,7 +35,7 @@ class Sentinel5PCommands {
             quality.GetRasterBand(1).ReadRaster(0, 0, quality.rasterXSize, quality.rasterYSize, maskBuffer)
             adding.GetRasterBand(1).ReadRaster(0, 0, adding.rasterXSize, adding.rasterYSize, dataBuffer)
 
-            dataBuffer.forEachIndexed { i, _ -> if (maskBuffer[i] < 75) dataBuffer[i] = 9.969209968386869E36F }
+            dataBuffer.forEachIndexed { i, _ -> if (maskBuffer[i] < qualityThreshold) dataBuffer[i] = 9.969209968386869E36F }
             println(((dataBuffer.count { it != 9.969209968386869E36F } *100F) / dataBuffer.size).toString() + "% of valid pixels ")
 
             val copy = gdal.GetDriverByName("MEM").CreateCopy("copy", adding)
@@ -82,7 +83,7 @@ class Sentinel5PCommands {
 
         mosaic.delete()
 
-        Files.list(matches.first().file.toPath().parent).filter { !it.toString().endsWith("nc") }.forEach { Files.delete(it) }
+        Files.list(matches.first().file.toPath().parent).filter { Files.isRegularFile(it) && !it.toString().endsWith("nc") }.forEach { Files.delete(it) }
 
         println(" ** DONE in ${(System.currentTimeMillis() - start) / 1000} seconds ")
     }

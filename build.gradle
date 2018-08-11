@@ -7,15 +7,18 @@ buildscript {
     repositories {
         mavenCentral()
         jcenter()
-//        maven { url "https://repo.spring.io/snapshot" }
         maven { url "https://repo.spring.io/milestone" }
         maven { url 'http://repo.spring.io/plugins-release' }
+        maven { url 'https://jitpack.io' }
+        maven { url "https://plugins.gradle.org/m2/" }
     }
     dependencies {
         classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}")
         classpath("org.jetbrains.kotlin:kotlin-allopen:${kotlinVersion}")
         classpath 'io.spring.gradle:propdeps-plugin:0.0.9.RELEASE'
+        classpath 'org.hidetake:gradle-ssh-plugin:2.9.0'
+        classpath 'com.github.menny:GradleVersion:0.0.4'
     }
 }
 
@@ -26,11 +29,50 @@ apply plugin: 'idea'
 apply plugin: "application"
 apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
+apply plugin: 'org.hidetake.ssh'
+apply plugin: 'net.evendanan.versiongenerator'
 
 group = 'org.earthstartsbeating'
-version = '0.0.1-SNAPSHOT'
 sourceCompatibility = 1.8
 mainClassName = 'org.esb.tools.EsbToolsKt'
+
+def generators = [
+        new net.evendanan.versiongenerator.generators.GitBuildVersionGenerator(0, 0),
+]
+
+def versionData = versionGenerator.generateVersion(1, 0, 0, generators)
+
+remotes {
+    esb {
+        host = '51.38.225.223'
+        port = 8080
+        user = 'centos'
+        identity = file("${System.properties['user.home']}/.ssh/serco-esb_rsa")
+    }
+}
+
+task('showPlatformVersion') {
+    doLast {
+        println ssh.version
+        ssh.run {
+            session(remotes.esb) {
+                execute 'uname -a'
+                execute 'cat /etc/*-release', ignoreError: true
+            }
+        }
+    }
+}
+
+task('deploy', dependsOn: bootJar) {
+    doLast {
+        ssh.run {
+            session(remotes.esb) {
+                put from: bootJar.archivePath.path, into: '/home/centos/fernando'
+                execute 'sudo chmod +x /home/centos/fernando/*.jar'
+            }
+        }
+    }
+}
 
 compileKotlin {
     kotlinOptions {
@@ -83,6 +125,18 @@ dependencies {
 
 bootJar {
     launchScript {
-//        inlinedConfScript = 'start.sh'
+        properties 'inlinedConfScript': 'esb.sh'
     }
+
+    println "Building Copernicus ESB Tools ${versionData.versionName} (or ${project.version}), code ${versionData.versionCode}."
+
+    finalizedBy deploy
 }
+
+
+
+springBoot {
+    buildInfo ()
+}
+
+
