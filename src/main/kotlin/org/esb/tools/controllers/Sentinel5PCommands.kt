@@ -19,11 +19,11 @@ import java.util.*
 
 @ShellComponent
 class Sentinel5PCommands {
-    private val measurementTypes = mapOf("no2" to Measurement("no2", "nitrogendioxide_tropospheric_column", "L2__NO2___"),
-            "aer_340_380" to Measurement("aer_340_380", "aerosol_index_340_380", "L2__AER_AI"),
-            "aer_354_388" to Measurement("aer_354_388", "aerosol_index_354_388", "L2__AER_AI"),
-            "o3" to Measurement("o3", "ozone_total_vertical_column", "L2__O3____"),
-            "co" to Measurement("co", "carbonmonoxide_total_column", "L2__CO____")
+    private val measurementTypes = mapOf("no2" to Measurement("no2", "nitrogendioxide_tropospheric_column", "L2__NO2___", "Nitrogen dioxide"),
+            "aer_340_380" to Measurement("aer_340_380", "aerosol_index_340_380", "L2__AER_AI", "Aerosol index at 340/380 nm wavelength"),
+            "aer_354_388" to Measurement("aer_354_388", "aerosol_index_354_388", "L2__AER_AI", "Aerosol index at  354/388 nm wavelength"),
+            "o3" to Measurement("o3", "ozone_total_vertical_column", "L2__O3____", "Ozone"),
+            "co" to Measurement("co", "carbonmonoxide_total_column", "L2__CO____", "Carbon monoxide")
     )
 
     @Bean
@@ -109,7 +109,7 @@ class Sentinel5PCommands {
     }
 
 
-    data class Measurement(val name: String, val varName: String, val prodType: String, val nodata: Float = 9.969209968386869E36F)
+    data class Measurement(val name: String, val varName: String, val prodType: String, val description: String = "", val nodata: Float = 9.969209968386869E36F)
 
 }
 

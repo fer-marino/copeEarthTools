@@ -43,7 +43,7 @@ class EsbPipeline {
             var startDate = LocalDateTime.of(year, month, 1, 0, 0)
             val stopDate = LocalDateTime.of(year, month + 1, 1, 0, 0)
 
-            println(" -- Measurement type: $name")
+            println(" -- Measurement type: ${measurement.description}")
 
             val filter = "( beginPosition:[${DateTimeFormatter.ISO_INSTANT.format(startDate.toInstant(ZoneOffset.UTC))} TO ${DateTimeFormatter.ISO_INSTANT.format(stopDate.toInstant(ZoneOffset.UTC))}] " +
                     "AND endPosition:[${DateTimeFormatter.ISO_INSTANT.format(startDate.toInstant(ZoneOffset.UTC))} TO ${DateTimeFormatter.ISO_INSTANT.format(stopDate.toInstant(ZoneOffset.UTC))}] ) " +

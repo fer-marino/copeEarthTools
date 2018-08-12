@@ -6,6 +6,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder
 import org.springframework.context.annotation.Bean
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
@@ -15,7 +16,6 @@ import org.springframework.web.client.HttpServerErrorException
 import org.springframework.web.client.RestOperations
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.nio.file.attribute.PosixFilePermission
 import java.util.*
 
 
@@ -65,14 +65,16 @@ class GeoserverCommands {
                 println(" * ERROR: coverage folder store folder does not exist: $coverageStoreFolder")
             }
 
-            val headers = LinkedMultiValueMap<String, String>()
-            headers.add(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN.toString())
-            val request = HttpEntity(coverageStoreFolder.toUri().toString(), headers)
-            println("Request " + request.toString())
-            val ris = restTemplate.postForEntity("${geoserverConfiguration.baseUrl}/rest/workspaces/" +
-                    "${geoserverConfiguration.workspace}/coveragestores/$coverageStore/external.imagemosaic",
-                    request, FeatureCollection::class.java)
-            println(ris)
+            Files.list(coverageStoreFolder).filter { Files.isRegularFile(it) && it.toString().endsWith(".tif") }.forEach {
+                val headers = LinkedMultiValueMap<String, String>()
+                headers.add(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN.toString())
+                // this is the local path in the docker container, that is mapped to /data/geoserver
+                val request = HttpEntity("file:///opt/geoserver/data_dir/$coverageStore/${it.fileName}", headers)
+                println("Adding " + it.fileName)
+                restTemplate.postForEntity("${geoserverConfiguration.baseUrl}/rest/workspaces/" +
+                        "${geoserverConfiguration.workspace}/coveragestores/$coverageStore/external.imagemosaic",
+                        request, FeatureCollection::class.java)
+            }
         } catch (e: HttpServerErrorException) {
             println(" * Error during granule add: ${e.message} \n\t ${e.responseBodyAsString}")
         }
