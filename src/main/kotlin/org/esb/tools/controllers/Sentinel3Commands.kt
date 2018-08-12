@@ -1245,11 +1245,6 @@ class Sentinel3Commands {
 
     }
 
-    @ShellMethod("gdal info")
-    fun info(prodName: String) {
-        println(gdal.GDALInfo(gdal.Open(prodName), InfoOptions(gdal.ParseCommandLine("-hist -stats"))))
-    }
-
     @ShellMethod("postprocess generated geotiff")
     fun postprocess(prod: String, maxSearchDistance: Double = 2.5, smothingIterations: Int = 3) {
         print(" * Post processing started for $prod...")

@@ -51,20 +51,9 @@ remotes {
     }
 }
 
-task('showPlatformVersion') {
-    doLast {
-        println ssh.version
-        ssh.run {
-            session(remotes.esb) {
-                execute 'uname -a'
-                execute 'cat /etc/*-release', ignoreError: true
-            }
-        }
-    }
-}
-
 task('deploy', dependsOn: bootJar) {
     doLast {
+        println "Pushing to DIAS..."
         ssh.run {
             session(remotes.esb) {
                 put from: bootJar.archivePath.path, into: '/home/centos/fernando'
@@ -130,10 +119,9 @@ bootJar {
 
     println "Building Copernicus ESB Tools ${versionData.versionName} (or ${project.version}), code ${versionData.versionCode}."
 
+    // comment out the following line if you do not want automatic deployment on dias!!
     finalizedBy deploy
 }
-
-
 
 springBoot {
     buildInfo ()

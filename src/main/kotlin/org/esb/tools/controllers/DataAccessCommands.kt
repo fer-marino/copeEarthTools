@@ -45,18 +45,17 @@ class DataAccessCommands {
         AttributedString("esb:>", AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW))
     }
 
-    @ShellMethod("Change selected DataHub instance")
-    fun selectHub(id: String) {
-        val hub = dataHubConfiguration.hubs.find { it.id == id }
-        if (hub != null)
-            selectedHub = hub
-        else
-            println(" ** DataHub with id $id not found. Available hubs are ${dataHubConfiguration.hubs.map { it.id }.reduceRight { s, acc -> (if (s == selectedHub?.id) "\\e[1m$s\\e[21m" else s) + ", $acc" }} ")
-    }
-
-    @ShellMethod("Shows available data hubs")
-    fun listDataHubs() {
-        println(" ** Available hubs are ${dataHubConfiguration.hubs.map { it.id }.reduceRight { s, acc -> (if (s == selectedHub?.id) "[$s]" else s) + ", $acc" }} ")
+    @ShellMethod("Manage available data hubs")
+    fun dataHub(@ShellOption(defaultValue = "") id: String) {
+        if (id.isNullOrEmpty()) {
+            println(" ** Available hubs are ${dataHubConfiguration.hubs.map { it.id }.reduceRight { s, acc -> (if (s == selectedHub?.id) "[$s]" else s) + ", $acc" }} ")
+        } else {
+            val hub = dataHubConfiguration.hubs.find { it.id == id }
+            if (hub != null)
+                selectedHub = hub
+            else
+                println(" ** DataHub with id $id not found. Available hubs are ${dataHubConfiguration.hubs.map { it.id }.reduceRight { s, acc -> (if (s == selectedHub?.id) "\\e[1m$s\\e[21m" else s) + ", $acc" }} ")
+        }
     }
 
     @ShellMethod("Query Serco Dias catalogue and download all the results")
@@ -112,7 +111,7 @@ class DataAccessCommands {
                     out.add(entry["title"].toString())
                 }
 
-                if (skipCount != 0 && skipCount != 100) print("\r * Skipped $skipCount products as already downloaded  "+
+                if (skipCount != 0 && skipCount != 100) print("\r * Skipped $skipCount products as already downloaded  " +
                         "                                                                                                                         ")
 
                 skip += pageSize
@@ -190,6 +189,7 @@ class DataAccessCommands {
                 } else
                     break
             } while (true)
+            println()
         } catch (e: HttpStatusCodeException) {
             println("HTTP Error (${e.statusCode}): ${e.message}")
             println(e.responseBodyAsString)

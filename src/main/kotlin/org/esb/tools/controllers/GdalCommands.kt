@@ -1,13 +1,14 @@
 package org.esb.tools.controllers
 
+import org.gdal.gdal.InfoOptions
 import org.gdal.gdal.gdal
 import org.slf4j.LoggerFactory
 import org.springframework.shell.standard.ShellComponent
 import org.springframework.shell.standard.ShellMethod
 
 @ShellComponent
-class GdalController {
-    private val log = LoggerFactory.getLogger(GdalController::class.java)
+class GdalCommands {
+    private val log = LoggerFactory.getLogger(GdalCommands::class.java)
 
     init {
         log.info("Loaded ${gdal.GetDriverCount()} GDAL drivers. ${gdal.VersionInfo(String())}")
@@ -29,5 +30,11 @@ class GdalController {
         gdal.PushErrorHandler("CPLQuietErrorHandler")
         TODO("Not implemented yet")
     }
+
+    @ShellMethod("gdal info")
+    fun info(prodName: String) {
+        println(gdal.GDALInfo(gdal.Open(prodName), InfoOptions(gdal.ParseCommandLine("-hist -stats"))))
+    }
+
 
 }

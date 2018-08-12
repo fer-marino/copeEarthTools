@@ -31,7 +31,7 @@ class GeoserverCommands {
     fun rest(builder: RestTemplateBuilder, geoserverConfiguration: GeoserverConfiguration): RestOperations = builder.basicAuthorization(geoserverConfiguration.username, geoserverConfiguration.password).build()
 
     @ShellMethod("Show store structure")
-    fun getStoreIndex(coverageStore: String) {
+    fun datastoreStructure(coverageStore: String) {
         // GET "http://localhost:8083/geoserver/rest/workspaces/geosolutions/coveragestores/polyphemus/coverages/NO2/index.xml"
         try {
             val ris = restTemplate.getForObject("${geoserverConfiguration.baseUrl}/rest/workspaces/${geoserverConfiguration.workspace}/coveragestores" +
@@ -55,7 +55,7 @@ class GeoserverCommands {
         }
     }
 
-    @ShellMethod("Add a granule pattern to an existing coverage store. The granulePattern shall be located in the geoserver filesystem")
+    @ShellMethod("Refresh coverage store granules. The granules shall be located already in the coverage store folder")
     fun addGranule(coverageStore: String) {
         try {
             println(" * Refreshing coverage store $coverageStore ...")
