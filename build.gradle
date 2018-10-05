@@ -1,7 +1,7 @@
 buildscript {
     ext {
-        kotlinVersion = '1.2.51'
-        springBootVersion = '2.0.4.RELEASE'
+        kotlinVersion = '1.2.70'
+        springBootVersion = '2.0.5.RELEASE'
         netcdfJavaVersion = '4.6.10'
     }
     repositories {
@@ -16,7 +16,6 @@ buildscript {
         classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}")
         classpath("org.jetbrains.kotlin:kotlin-allopen:${kotlinVersion}")
-        classpath 'io.spring.gradle:propdeps-plugin:0.0.9.RELEASE'
         classpath 'org.hidetake:gradle-ssh-plugin:2.9.0'
         classpath 'com.github.menny:GradleVersion:0.0.4'
     }
@@ -120,7 +119,7 @@ bootJar {
     println "Building Copernicus ESB Tools ${versionData.versionName} (or ${project.version}), code ${versionData.versionCode}."
 
     // comment out the following line if you do not want automatic deployment on dias!!
-    finalizedBy deploy
+//    finalizedBy deploy
 }
 
 springBoot {

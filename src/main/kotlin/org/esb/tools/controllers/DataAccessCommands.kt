@@ -104,7 +104,7 @@ class DataAccessCommands {
                         if (destination.isNotEmpty())
                             downloader.download(Product(entry["id"].toString(), entry["name"].toString(), destination, 0, hub))
                         else
-                            println(" ** ${entry["title"]}")
+                            println(" ** ${entry["name"]}")
                     } else
                         skipCount++
 
@@ -130,8 +130,9 @@ class DataAccessCommands {
     @ShellMethod("Query Copernicus open hub on Open Sarch API and download all the results")
     fun oSearch(
             @ShellOption(defaultValue = "*") filter: String,
-            @ShellOption(defaultValue = "IngestionDate desc") orderBy: String,
-            @ShellOption(defaultValue = "") destination: String
+            @ShellOption(defaultValue = "") orderBy: String,
+            @ShellOption(defaultValue = "") destination: String,
+            @ShellOption(defaultValue = Integer.MAX_VALUE.toString()) limit: Int = Integer.MAX_VALUE
     ): List<String> {
         if (selectedHub == null) {
             println(" **** No hub selected. Select an hub first")
@@ -149,12 +150,13 @@ class DataAccessCommands {
         val tpl = restTemplateBuilder.basicAuthorization(hub.username, hub.password).build()
         var skipCount = 0
         try {
-            do {
+            loop@ do {
                 val start = System.currentTimeMillis()
                 val headers = HttpHeaders()
                 headers.accept = listOf(MediaType.APPLICATION_JSON)
                 val entity = HttpEntity("parameters", headers)
-                val query = "${hub.url}/search?start=$skip&rows=$pageSize&orderby=$orderBy&format=json&q=$filter"
+                val ordering = if(orderBy.isNotBlank()) "&orderby=$orderBy" else ""
+                val query = "${hub.url}/search?start=$skip&rows=$pageSize$ordering&format=json&q=$filter"
                 if (skip == 0)
                     println(" * Running query $query")
                 else if (skip < totalProduct)
@@ -181,6 +183,9 @@ class DataAccessCommands {
                             skipCount++
 
                         out.add(entry["title"].toString())
+
+                        if(out.size > limit)
+                            break@loop
                     }
 
                     if (skipCount != 0 && skipCount % 100 != 0) print("\r * Skipped $skipCount products as already downloaded                                                                                          ")
